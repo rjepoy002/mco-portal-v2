@@ -1,3 +1,75 @@
+<?php
+
+session_start();
+
+require_once __DIR__ . '/config/database.php';
+
+$error = '';
+$success = '';
+
+if (isset($_GET['registered']) && $_GET['registered'] === '1') {
+    $success = 'Your account has been successfully created. You can now sign in.';
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+
+        $error = 'Please enter a valid email address.';
+
+    } elseif ($password === '') {
+
+        $error = 'Please enter your password.';
+
+    } else {
+
+        $stmt = $pdo->prepare("
+            SELECT
+                id,
+                email,
+                name,
+                password_hash,
+                status,
+                email_verified_at
+            FROM users
+            WHERE email = ?
+            LIMIT 1
+        ");
+
+        $stmt->execute([$email]);
+
+        $user = $stmt->fetch();
+
+        if (!$user || !password_verify($password, $user['password_hash'])) {
+
+            $error = 'Invalid email or password.';
+
+        } elseif ($user['status'] !== 'active') {
+
+            $error = 'Your account is not active.';
+
+        } elseif ($user['email_verified_at'] === null) {
+
+            $error = 'Please verify your email address first.';
+
+        } else {
+
+            session_regenerate_id(true);
+
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['user_email'] = $user['email'];
+            $_SESSION['user_name'] = $user['name'];
+
+            header('Location: dashboard.php');
+            exit;
+        }
+    }
+}
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -11,6 +83,12 @@
     >
 
     <title>PALECO MCO Portal</title>
+
+    <link
+        rel="icon"
+        type="image/png"
+        href="assets/images/logo.png"
+    >
 
 
     <!-- Google Font -->
@@ -160,7 +238,7 @@
 
             <div class="feature">
 
-                <i class="bi bi-leaf"></i>
+                <i class="bi bi-tree"></i>
 
                 <strong>
                     A Greener Palawan
@@ -211,6 +289,32 @@
                         Sign in to your MCO Portal account.
                     </p>
 
+                    <?php if ($success !== ''): ?>
+
+                        <div class="login-success">
+                            <i class="bi bi-check-circle"></i>
+
+                            <span>
+                                <?= htmlspecialchars($success) ?>
+                            </span>
+                        </div>
+
+                    <?php endif; ?>
+
+                    <?php if ($error !== ''): ?>
+
+                        <div class="login-error" role="alert">
+
+                            <i class="bi bi-exclamation-circle-fill"></i>
+
+                            <span>
+                                <?= htmlspecialchars($error) ?>
+                            </span>
+
+                        </div>
+
+                    <?php endif; ?>
+
                 </div>
 
 
@@ -218,7 +322,7 @@
                 <!-- LOGIN FORM -->
 
                 <form
-                    action="#"
+                    action=""
                     method="POST"
                 >
 
@@ -289,6 +393,7 @@
                                 class="password-toggle"
                                 id="passwordToggle"
                                 aria-label="Show password"
+                                tabindex="-1"
                             >
 
                                 <i class="bi bi-eye"></i>
@@ -306,7 +411,7 @@
                     <div class="form-options">
 
 
-                        <label class="remember">
+                        <!-- <label class="remember">
 
                             <input
                                 type="checkbox"
@@ -317,7 +422,7 @@
                                 Remember me
                             </span>
 
-                        </label>
+                        </label> -->
 
 
                         <a
