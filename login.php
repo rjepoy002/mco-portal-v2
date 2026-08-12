@@ -42,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 email,
                 name,
                 password_hash,
+                google_id,
                 status,
                 email_verified_at
             FROM users
@@ -56,6 +57,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$user || !password_verify($password, $user['password_hash'])) {
 
             $error = 'Invalid email or password.';
+
+            if (
+                $user &&
+                !empty($user['google_id'])
+            ) {
+
+                $error .= ' If you previously signed in with Google, you can continue with Google or reset your password.';
+
+            }
 
         } elseif ($user['status'] !== 'active') {
 

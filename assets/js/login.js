@@ -41,28 +41,25 @@ if (passwordInput && passwordToggle) {
 
 
 /* =========================================
-   GOOGLE SIGN-IN
-   Placeholder for now
+   GOOGLE LOGIN
 ========================================= */
 
-const googleLogin =
+const googleLoginButton =
     document.getElementById("googleLogin");
 
-if (googleLogin) {
+if (googleLoginButton) {
 
-    googleLogin.addEventListener(
+    googleLoginButton.addEventListener(
         "click",
         function () {
 
-            alert(
-                "Google Sign-In will be connected later."
-            );
+            window.location.href =
+                "google-login.php";
 
         }
     );
 
 }
-
 
 /* =========================================
    CLEAN RESET SUCCESS URL
