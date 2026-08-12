@@ -8,7 +8,17 @@ $error = '';
 $success = '';
 
 if (isset($_GET['registered']) && $_GET['registered'] === '1') {
-    $success = 'Your account has been successfully created. You can now sign in.';
+
+    $success =
+        'Your account has been successfully created. You can now sign in.';
+
+}
+
+if (isset($_GET['reset']) && $_GET['reset'] === 'success') {
+
+    $success =
+        'Your password has been changed successfully. You can now sign in with your new password.';
+
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

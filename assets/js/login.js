@@ -8,7 +8,6 @@ const passwordInput =
 const passwordToggle =
     document.getElementById("passwordToggle");
 
-
 if (passwordInput && passwordToggle) {
 
     passwordToggle.addEventListener(
@@ -18,18 +17,15 @@ if (passwordInput && passwordToggle) {
             const isPassword =
                 passwordInput.type === "password";
 
-
             passwordInput.type =
                 isPassword
                     ? "text"
                     : "password";
 
-
             this.innerHTML =
                 isPassword
                     ? '<i class="bi bi-eye-slash"></i>'
                     : '<i class="bi bi-eye"></i>';
-
 
             this.setAttribute(
                 "aria-label",
@@ -52,7 +48,6 @@ if (passwordInput && passwordToggle) {
 const googleLogin =
     document.getElementById("googleLogin");
 
-
 if (googleLogin) {
 
     googleLogin.addEventListener(
@@ -64,6 +59,26 @@ if (googleLogin) {
             );
 
         }
+    );
+
+}
+
+
+/* =========================================
+   CLEAN RESET SUCCESS URL
+========================================= */
+
+const urlParams =
+    new URLSearchParams(window.location.search);
+
+if (
+    urlParams.get("reset") === "success"
+) {
+
+    window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname
     );
 
 }
