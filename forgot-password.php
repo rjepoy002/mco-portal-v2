@@ -319,7 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div class="register">
 
-                        <a href="login.php">
+                        <a href="index.php">
                             ← Back to Login
                         </a>
 

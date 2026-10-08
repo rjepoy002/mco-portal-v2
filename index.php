@@ -82,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['user_email'] = $user['email'];
             $_SESSION['user_name'] = $user['name'];
+            unset($_SESSION['SelectedAcctNo']);
 
             header('Location: dashboard.php');
             exit;
@@ -102,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>PALECO MCO Portal</title>
+    <title>Sign In | PALECO MCO Portal</title>
 
     <link
         rel="icon"

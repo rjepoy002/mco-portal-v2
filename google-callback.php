@@ -175,6 +175,7 @@ try {
     $_SESSION['user_id'] = $user['id'];
     $_SESSION['user_email'] = $user['email'];
     $_SESSION['user_name'] = $user['name'];
+    unset($_SESSION['SelectedAcctNo']);
     $_SESSION['logged_in'] = true;
 
     // =========================================

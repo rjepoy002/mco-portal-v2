@@ -205,7 +205,7 @@ if (
              */
 
             header(
-                'Location: login.php?reset=success'
+                'Location: index.php?reset=success'
             );
 
             exit;
@@ -602,7 +602,7 @@ if (
 
                     <div class="register">
 
-                        <a href="login.php">
+                        <a href="index.php">
 
                             <i class="bi bi-arrow-left"></i>
 
@@ -653,7 +653,7 @@ if (
 
                     <div class="register">
 
-                        <a href="login.php">
+                        <a href="index.php">
 
                             <i class="bi bi-arrow-left"></i>
 

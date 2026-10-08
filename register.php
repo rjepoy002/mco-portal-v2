@@ -720,7 +720,7 @@ if (
 
             // Registration successful
 
-            header('Location: login.php?registered=1');
+            header('Location: index.php?registered=1');
             exit;
         }
     }
@@ -1287,7 +1287,7 @@ if (
 
                         Already have an account?
 
-                        <a href="login.php">
+                        <a href="index.php">
                             Sign in
                         </a>
 
