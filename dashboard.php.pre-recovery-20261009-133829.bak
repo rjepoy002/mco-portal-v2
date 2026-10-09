@@ -1,0 +1,1493 @@
+<?php
+
+/**
+ * PALECO MCO Portal
+ * dashboard.php
+ *
+ * LOCAL XAMPP DEVELOPMENT ONLY
+ *
+ * DATABASE SEPARATION
+ * ---------------------------------------------------------
+ * mco_portal
+ *   users              READ / WRITE
+ *   paleco_accounts    READ / WRITE
+ *
+ * palecxzp_pal_db
+ *   ebills             READ ONLY
+ *   master             READ ONLY
+ *   billhistory        READ ONLY
+ *   arledger           READ ONLY
+ *   member             READ ONLY
+ */
+
+
+/* =========================================================
+   LOCALHOST ONLY
+   ========================================================= */
+
+$allowedHosts = [
+    'localhost',
+    '127.0.0.1',
+    '::1',
+];
+
+$currentHost = $_SERVER['HTTP_HOST'] ?? '';
+
+if (str_starts_with($currentHost, '[')) {
+
+    $closingBracket = strpos($currentHost, ']');
+
+    if ($closingBracket !== false) {
+        $currentHost = substr(
+            $currentHost,
+            1,
+            $closingBracket - 1
+        );
+    }
+
+} else {
+
+    $currentHost = preg_replace(
+        '/:\d+$/',
+        '',
+        $currentHost
+    );
+}
+
+$currentHost = strtolower(trim($currentHost));
+
+if (!in_array($currentHost, $allowedHosts, true)) {
+
+    http_response_code(403);
+
+    exit(
+        '<!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta
+                name="viewport"
+                content="width=device-width, initial-scale=1"
+            >
+            <title>403 - Local Development Only</title>
+        </head>
+        <body>
+            <h1>403 - Local Development Only</h1>
+            <p>
+                This PALECO MCO Portal development build
+                can only run on localhost.
+            </p>
+        </body>
+        </html>'
+    );
+}
+
+
+/* =========================================================
+   BOOTSTRAP
+   ========================================================= */
+
+require_once __DIR__ . '/includes/account-context.php';
+require_once __DIR__ . '/includes/billing-service.php';
+
+
+/* =========================================================
+   AUTHENTICATION
+   ========================================================= */
+
+$userId = (int) ($_SESSION['user_id'] ?? 0);
+
+if ($userId <= 0) {
+    header('Location: index.php');
+    exit;
+}
+
+
+/* =========================================================
+   USER INFORMATION
+
+   Keep using session values because these are already
+   populated by the existing login system.
+   ========================================================= */
+
+$userEmail = trim(
+    (string) ($_SESSION['user_email'] ?? '')
+);
+
+$userDisplayName = trim(
+    (string) ($_SESSION['user_name'] ?? '')
+);
+
+if ($userDisplayName === '') {
+    $userDisplayName = $userEmail !== ''
+        ? $userEmail
+        : 'Member';
+}
+
+
+/* =========================================================
+   DISPLAY HELPERS
+   ========================================================= */
+
+function formatBillMonth(?string $billMonth): string
+{
+    $billMonth = trim((string) $billMonth);
+
+    if (!preg_match('/^(\d{4})(\d{2})$/', $billMonth, $match)) {
+        return $billMonth !== '' ? $billMonth : '—';
+    }
+
+    $year = (int) $match[1];
+    $month = (int) $match[2];
+
+    if ($month < 1 || $month > 12) {
+        return $billMonth;
+    }
+
+    return strtoupper(
+        date(
+            'M Y',
+            mktime(0, 0, 0, $month, 1, $year)
+        )
+    );
+}
+
+
+function formatPortalDate(?string $date): string
+{
+    $date = trim((string) $date);
+
+    if ($date === '') {
+        return '—';
+    }
+
+    $timestamp = strtotime($date);
+
+    if ($timestamp === false) {
+        return $date;
+    }
+
+    return date('M j, Y', $timestamp);
+}
+
+
+function unpaidBillStatus(?string $dueDate): array
+{
+    $dueDate = trim((string) $dueDate);
+
+    if ($dueDate === '') {
+        return [
+            'label' => 'Due Date Unavailable',
+            'class' => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+        ];
+    }
+
+    $timestamp = strtotime($dueDate);
+
+    if ($timestamp === false) {
+        return [
+            'label' => 'Due Date Unavailable',
+            'class' => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+        ];
+    }
+
+    if (date('Y-m-d', $timestamp) < date('Y-m-d')) {
+        return [
+            'label' => 'Overdue',
+            'class' => 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+        ];
+    }
+
+    return [
+        'label' => 'Not Yet Due',
+        'class' => 'bg-paleco-50 text-paleco-700 dark:bg-paleco-900 dark:text-paleco-100',
+    ];
+}
+
+function formatConsumerAccountCode(array $account): string
+{
+    $accountCode = trim((string) ($account['AcctCode'] ?? ''));
+
+    return $accountCode !== ''
+        ? 'Account ' . $accountCode
+        : 'Account code unavailable';
+}
+/* =========================================================
+   LEGACY EBILLS SYNCHRONIZATION
+
+   READ:
+       palecxzp_pal_db.ebills
+       palecxzp_pal_db.master
+
+   WRITE:
+       mco_portal.paleco_accounts only
+   ========================================================= */
+
+function syncLegacyEbillsAccounts(
+    PDO $pdo,
+    int $userId,
+    string $userEmail
+): void {
+
+    $userEmail = trim($userEmail);
+
+    if ($userId <= 0 || $userEmail === '') {
+        return;
+    }
+
+    /*
+     * Existing eBills registrations:
+     *
+     * ebills.Email
+     *      ↓
+     * ebills.AccCode
+     *      ↓
+     * master.AcctCode
+     *      ↓
+     * master.AcctNo
+     */
+
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT
+            m.AcctNo
+        FROM palecxzp_pal_db.ebills AS e
+        INNER JOIN palecxzp_pal_db.master AS m
+            ON m.AcctCode = e.AccCode
+        WHERE LOWER(TRIM(e.Email)) = LOWER(TRIM(?))
+          AND e.AccCode IS NOT NULL
+          AND e.AccCode <> ''
+          AND m.AcctNo IS NOT NULL
+          AND m.AcctNo <> ''
+    ");
+
+    $stmt->execute([$userEmail]);
+
+    $legacyAccounts = $stmt->fetchAll(
+        PDO::FETCH_COLUMN
+    );
+
+    if (!$legacyAccounts) {
+        return;
+    }
+
+    try {
+
+        $pdo->beginTransaction();
+
+        /*
+         * Lock portal user.
+         */
+
+        $lock = $pdo->prepare("
+            SELECT id
+            FROM mco_portal.users
+            WHERE id = ?
+            FOR UPDATE
+        ");
+
+        $lock->execute([$userId]);
+
+
+        /*
+         * Find an existing portal relationship.
+         */
+
+        $check = $pdo->prepare("
+            SELECT
+                id,
+                status
+            FROM mco_portal.paleco_accounts
+            WHERE user_id = ?
+              AND AcctNo = ?
+            LIMIT 1
+            FOR UPDATE
+        ");
+
+
+        /*
+         * Add a missing portal relationship.
+         */
+
+        $insert = $pdo->prepare("
+            INSERT INTO mco_portal.paleco_accounts
+            (
+                user_id,
+                AcctNo,
+                account_nickname,
+                is_primary,
+                status,
+                verified_at
+            )
+            VALUES
+            (
+                ?,
+                ?,
+                NULL,
+                0,
+                'active',
+                NOW()
+            )
+        ");
+
+
+        /*
+         * Restore inactive legacy-linked account.
+         */
+
+        $restore = $pdo->prepare("
+            UPDATE mco_portal.paleco_accounts
+            SET
+                status = 'active',
+                verified_at = NOW()
+            WHERE id = ?
+              AND user_id = ?
+        ");
+
+
+        foreach ($legacyAccounts as $acctNo) {
+
+            $acctNo = trim((string) $acctNo);
+
+            if ($acctNo === '') {
+                continue;
+            }
+
+            $check->execute([
+                $userId,
+                $acctNo
+            ]);
+
+            $existing = $check->fetch(
+                PDO::FETCH_ASSOC
+            );
+
+            if ($existing) {
+
+                if (
+                    ($existing['status'] ?? '')
+                    !== 'active'
+                ) {
+
+                    $restore->execute([
+                        $existing['id'],
+                        $userId
+                    ]);
+                }
+
+                continue;
+            }
+
+            $insert->execute([
+                $userId,
+                $acctNo
+            ]);
+        }
+
+
+        /*
+         * Check for primary account.
+         */
+
+        $primary = $pdo->prepare("
+            SELECT id
+            FROM mco_portal.paleco_accounts
+            WHERE user_id = ?
+              AND status = 'active'
+              AND is_primary = 1
+            LIMIT 1
+        ");
+
+        $primary->execute([$userId]);
+
+        $hasPrimary = $primary->fetchColumn();
+
+
+        /*
+         * If no primary exists, use oldest active account.
+         */
+
+        if (!$hasPrimary) {
+
+            $first = $pdo->prepare("
+                SELECT id
+                FROM mco_portal.paleco_accounts
+                WHERE user_id = ?
+                  AND status = 'active'
+                ORDER BY id ASC
+                LIMIT 1
+            ");
+
+            $first->execute([$userId]);
+
+            $firstId = $first->fetchColumn();
+
+            if ($firstId) {
+
+                $setPrimary = $pdo->prepare("
+                    UPDATE mco_portal.paleco_accounts
+                    SET is_primary = 1
+                    WHERE id = ?
+                      AND user_id = ?
+                ");
+
+                $setPrimary->execute([
+                    $firstId,
+                    $userId
+                ]);
+            }
+        }
+
+        $pdo->commit();
+
+    } catch (Throwable $e) {
+
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        error_log(
+            'Legacy eBills synchronization failed: '
+            . $e->getMessage()
+        );
+
+        /*
+         * Do not block dashboard access just because
+         * legacy account synchronization failed.
+         */
+    }
+}
+
+
+/* =========================================================
+   SYNCHRONIZE EBILLS ACCOUNTS
+   ========================================================= */
+
+syncLegacyEbillsAccounts(
+    $pdo,
+    $userId,
+    $userEmail
+);
+
+
+/* =========================================================
+   NAVIGATION
+   ========================================================= */
+
+$nav = [
+    'dashboard'        => 'Dashboard',
+    'bills'            => 'My Bills',
+    'account-settings' => 'Account & Settings',
+];
+
+/* Keep legacy bookmarks functional without retaining redundant navigation. */
+$legacyPageRoutes = [
+    'bill-history' => ['page' => 'bills', 'tab' => 'history'],
+    'consumption'  => ['page' => 'dashboard'],
+    'accounts'     => ['page' => 'account-settings'],
+    'profile'      => ['page' => 'account-settings'],
+];
+
+$requestedPage = $_GET['page'] ?? 'dashboard';
+$legacyRoute = is_string($requestedPage)
+    ? ($legacyPageRoutes[$requestedPage] ?? null)
+    : null;
+
+$page = $legacyRoute['page'] ?? (
+    is_string($requestedPage)
+    && array_key_exists($requestedPage, $nav)
+        ? $requestedPage
+        : 'dashboard'
+);
+
+$requestedBillsTab = $legacyRoute['tab'] ?? ($_GET['tab'] ?? 'unpaid');
+$billsTab = (
+    $page === 'bills'
+    && is_string($requestedBillsTab)
+    && in_array($requestedBillsTab, ['unpaid', 'history'], true)
+)
+    ? $requestedBillsTab
+    : 'unpaid';
+
+/* Explicit configuration only; localhost alone never enables this notice. */
+$appEnvironment = strtolower((string) (getenv('MCO_APP_ENV') ?: 'production'));
+$isDevelopmentMode = in_array(
+    $appEnvironment,
+    ['development', 'local'],
+    true
+);
+
+
+/* =========================================================
+   POST ACTIONS
+   ========================================================= */
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $action = (string) ($_POST['action'] ?? '');
+
+    $returnPage = 'account-settings';
+
+    if ($action === 'switch') {
+        $requestedReturnPage = (string) ($_POST['return_page'] ?? 'dashboard');
+        $returnPage = array_key_exists($requestedReturnPage, $nav)
+            ? $requestedReturnPage
+            : 'dashboard';
+    }
+
+
+    /* -----------------------------------------------------
+       CSRF
+       ----------------------------------------------------- */
+
+    if (
+        !hash_equals(
+            dashboardCsrfToken(),
+            (string) ($_POST['csrf_token'] ?? '')
+        )
+    ) {
+
+        dashboardReturn(
+            $returnPage,
+            'Your session expired. Please try again.',
+            'error'
+        );
+    }
+
+
+    $acctNo = trim(
+        (string) ($_POST['account_number'] ?? '')
+    );
+
+
+    try {
+
+        /* =================================================
+           SWITCH ACCOUNT
+           ================================================= */
+
+        if ($action === 'switch') {
+
+            $stmt = $pdo->prepare("
+                SELECT AcctNo
+                FROM mco_portal.paleco_accounts
+                WHERE user_id = ?
+                  AND AcctNo = ?
+                  AND status = 'active'
+                LIMIT 1
+            ");
+
+            $stmt->execute([
+                $userId,
+                $acctNo
+            ]);
+
+            if (!$stmt->fetch()) {
+
+                dashboardReturn(
+                    $returnPage,
+                    'That account is not linked to your profile.',
+                    'error'
+                );
+            }
+
+            $_SESSION['SelectedAcctNo'] = $acctNo;
+
+            dashboardReturn(
+                $returnPage,
+                'Viewing account updated.'
+            );
+        }
+
+
+        /* =================================================
+           ADD ACCOUNT
+
+           Manual verification:
+               master.AcctNo
+               +
+               master.MeterSerial
+
+           master remains READ ONLY.
+           ================================================= */
+
+        if ($action === 'add') {
+
+            $meter = trim(
+                (string) ($_POST['meter_number'] ?? '')
+            );
+
+            $label = trim(
+                (string) ($_POST['label'] ?? '')
+            );
+
+
+            if (
+                $acctNo === ''
+                || $meter === ''
+                || strlen($acctNo) > 15
+                || strlen($meter) > 20
+                || mb_strlen($label) > 100
+            ) {
+
+                dashboardReturn(
+                    'account-settings',
+                    'Enter a valid account number and meter number.',
+                    'error'
+                );
+            }
+
+
+            /*
+             * PALECO MASTER — SELECT ONLY
+             */
+
+            $verify = $pdo->prepare("
+                SELECT
+                    AcctNo,
+                    AcctCode,
+                    Name,
+                    Address,
+                    Status,
+                    MeterSerial
+                FROM palecxzp_pal_db.master
+                WHERE AcctNo = ?
+                  AND MeterSerial = ?
+                LIMIT 1
+            ");
+
+            $verify->execute([
+                $acctNo,
+                $meter
+            ]);
+
+            $verifiedAccount = $verify->fetch(
+                PDO::FETCH_ASSOC
+            );
+
+            if (!$verifiedAccount) {
+
+                dashboardReturn(
+                    'account-settings',
+                    'The account and meter number could not be verified.',
+                    'error'
+                );
+            }
+
+
+            $pdo->beginTransaction();
+
+
+            /*
+             * Lock portal user.
+             */
+
+            $lock = $pdo->prepare("
+                SELECT id
+                FROM mco_portal.users
+                WHERE id = ?
+                FOR UPDATE
+            ");
+
+            $lock->execute([$userId]);
+
+
+            /*
+             * Check existing portal account link.
+             */
+
+            $check = $pdo->prepare("
+                SELECT
+                    id,
+                    status
+                FROM mco_portal.paleco_accounts
+                WHERE user_id = ?
+                  AND AcctNo = ?
+                LIMIT 1
+                FOR UPDATE
+            ");
+
+            $check->execute([
+                $userId,
+                $acctNo
+            ]);
+
+            $existing = $check->fetch(
+                PDO::FETCH_ASSOC
+            );
+
+
+            if (
+                $existing
+                && ($existing['status'] ?? '') === 'active'
+            ) {
+
+                $pdo->rollBack();
+
+                dashboardReturn(
+                    'account-settings',
+                    'This account is already linked.',
+                    'error'
+                );
+            }
+
+
+            /*
+             * Is this the first active account?
+             */
+
+            $count = $pdo->prepare("
+                SELECT COUNT(*)
+                FROM mco_portal.paleco_accounts
+                WHERE user_id = ?
+                  AND status = 'active'
+            ");
+
+            $count->execute([$userId]);
+
+            $first = (
+                (int) $count->fetchColumn() === 0
+            );
+
+
+            /*
+             * Restore previously inactive account.
+             */
+
+            if ($existing) {
+
+                $stmt = $pdo->prepare("
+                    UPDATE mco_portal.paleco_accounts
+                    SET
+                        account_nickname = ?,
+                        status = 'active',
+                        is_primary = ?,
+                        verified_at = NOW()
+                    WHERE id = ?
+                      AND user_id = ?
+                ");
+
+                $stmt->execute([
+                    $label !== '' ? $label : null,
+                    $first ? 1 : 0,
+                    $existing['id'],
+                    $userId
+                ]);
+
+            } else {
+
+                /*
+                 * INSERT only into portal database.
+                 */
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO mco_portal.paleco_accounts
+                    (
+                        user_id,
+                        AcctNo,
+                        account_nickname,
+                        is_primary,
+                        status,
+                        verified_at
+                    )
+                    VALUES
+                    (
+                        ?,
+                        ?,
+                        ?,
+                        ?,
+                        'active',
+                        NOW()
+                    )
+                ");
+
+                $stmt->execute([
+                    $userId,
+                    $acctNo,
+                    $label !== '' ? $label : null,
+                    $first ? 1 : 0
+                ]);
+            }
+
+
+            $pdo->commit();
+
+
+            if ($first) {
+                $_SESSION['SelectedAcctNo'] = $acctNo;
+            }
+
+
+            dashboardReturn(
+                'account-settings',
+                'PALECO account linked successfully.'
+            );
+        }
+
+
+        /* =================================================
+           RENAME ACCOUNT
+           ================================================= */
+
+        if ($action === 'rename') {
+
+            $label = trim(
+                (string) ($_POST['label'] ?? '')
+            );
+
+            if (mb_strlen($label) > 100) {
+
+                dashboardReturn(
+                    'account-settings',
+                    'The label must be 100 characters or fewer.',
+                    'error'
+                );
+            }
+
+
+            /*
+             * Verify account ownership.
+             */
+
+            $check = $pdo->prepare("
+                SELECT id
+                FROM mco_portal.paleco_accounts
+                WHERE user_id = ?
+                  AND AcctNo = ?
+                  AND status = 'active'
+                LIMIT 1
+            ");
+
+            $check->execute([
+                $userId,
+                $acctNo
+            ]);
+
+            if (!$check->fetch()) {
+
+                dashboardReturn(
+                    'account-settings',
+                    'That account is not linked to your profile.',
+                    'error'
+                );
+            }
+
+
+            /*
+             * Portal-owned nickname only.
+             */
+
+            $stmt = $pdo->prepare("
+                UPDATE mco_portal.paleco_accounts
+                SET account_nickname = ?
+                WHERE user_id = ?
+                  AND AcctNo = ?
+                  AND status = 'active'
+            ");
+
+            $stmt->execute([
+                $label !== '' ? $label : null,
+                $userId,
+                $acctNo
+            ]);
+
+
+            dashboardReturn(
+                'account-settings',
+                'Account label saved.'
+            );
+        }
+
+
+        /* =================================================
+           MAKE PRIMARY
+           ================================================= */
+
+        if ($action === 'primary') {
+
+            $pdo->beginTransaction();
+
+
+            $lock = $pdo->prepare("
+                SELECT id
+                FROM mco_portal.users
+                WHERE id = ?
+                FOR UPDATE
+            ");
+
+            $lock->execute([$userId]);
+
+
+            /*
+             * Validate ownership before changing primary.
+             */
+
+            $check = $pdo->prepare("
+                SELECT id
+                FROM mco_portal.paleco_accounts
+                WHERE user_id = ?
+                  AND AcctNo = ?
+                  AND status = 'active'
+                LIMIT 1
+                FOR UPDATE
+            ");
+
+            $check->execute([
+                $userId,
+                $acctNo
+            ]);
+
+            if (!$check->fetch()) {
+
+                $pdo->rollBack();
+
+                dashboardReturn(
+                    'account-settings',
+                    'That account is not linked to your profile.',
+                    'error'
+                );
+            }
+
+
+            /*
+             * Clear previous primary.
+             */
+
+            $clear = $pdo->prepare("
+                UPDATE mco_portal.paleco_accounts
+                SET is_primary = 0
+                WHERE user_id = ?
+                  AND status = 'active'
+            ");
+
+            $clear->execute([$userId]);
+
+
+            /*
+             * Set new primary.
+             */
+
+            $set = $pdo->prepare("
+                UPDATE mco_portal.paleco_accounts
+                SET is_primary = 1
+                WHERE user_id = ?
+                  AND AcctNo = ?
+                  AND status = 'active'
+            ");
+
+            $set->execute([
+                $userId,
+                $acctNo
+            ]);
+
+
+            $pdo->commit();
+
+
+            dashboardReturn(
+                'account-settings',
+                'Primary account updated.'
+            );
+        }
+
+
+        dashboardReturn(
+            'dashboard',
+            'Unknown action.',
+            'error'
+        );
+
+
+    } catch (Throwable $e) {
+
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        error_log(
+            'Dashboard action failed: '
+            . $e->getMessage()
+        );
+
+        dashboardReturn(
+            $returnPage,
+            'We could not save that change. Please try again.',
+            'error'
+        );
+    }
+}
+
+
+/* =========================================================
+   LOAD LINKED ACCOUNTS
+
+   IMPORTANT:
+   We do this directly here instead of relying on
+   dashboardLinkedAccounts(), because master lives in
+   palecxzp_pal_db while paleco_accounts lives in mco_portal.
+   ========================================================= */
+
+$linkedStmt = $pdo->prepare("
+    SELECT
+        pa.id,
+        pa.user_id,
+        pa.AcctNo,
+        pa.account_nickname,
+        pa.is_primary,
+        pa.status,
+        pa.verified_at,
+
+        m.AcctCode,
+        m.Name,
+        m.Address,
+        m.Status AS MasterStatus,
+        m.Area,
+        m.Book,
+        m.MeterBrand,
+        m.MeterSerial,
+        m.MemberCode,
+        m.ConnectionType
+
+    FROM mco_portal.paleco_accounts AS pa
+
+    LEFT JOIN palecxzp_pal_db.master AS m
+        ON m.AcctNo = pa.AcctNo
+
+    WHERE pa.user_id = ?
+      AND pa.status = 'active'
+
+    ORDER BY
+        pa.is_primary DESC,
+        pa.id ASC
+");
+
+$linkedStmt->execute([$userId]);
+
+$linkedAccounts = $linkedStmt->fetchAll(
+    PDO::FETCH_ASSOC
+);
+
+
+/*
+ * Normalize master Status so existing UI can continue
+ * using $account['Status'].
+ */
+
+foreach ($linkedAccounts as &$account) {
+    $account['Status'] = $account['MasterStatus'] ?? null;
+}
+
+unset($account);
+
+
+/* =========================================================
+   DETERMINE SELECTED ACCOUNT
+   ========================================================= */
+
+$selectedAccount = null;
+
+$sessionAcctNo = trim(
+    (string) ($_SESSION['SelectedAcctNo'] ?? '')
+);
+
+
+/*
+ * First preference:
+ * currently selected authorized account.
+ */
+
+if ($sessionAcctNo !== '') {
+
+    foreach ($linkedAccounts as $account) {
+
+        if (
+            (string) $account['AcctNo']
+            === $sessionAcctNo
+        ) {
+
+            $selectedAccount = $account;
+
+            break;
+        }
+    }
+}
+
+
+/*
+ * Second preference:
+ * primary account.
+ */
+
+if (!$selectedAccount) {
+
+    foreach ($linkedAccounts as $account) {
+
+        if ((int) $account['is_primary'] === 1) {
+
+            $selectedAccount = $account;
+
+            break;
+        }
+    }
+}
+
+
+/*
+ * Last fallback:
+ * first linked account.
+ */
+
+if (
+    !$selectedAccount
+    && !empty($linkedAccounts)
+) {
+
+    $selectedAccount = $linkedAccounts[0];
+}
+
+
+/*
+ * Keep selected account in session.
+ */
+
+if ($selectedAccount) {
+
+    $_SESSION['SelectedAcctNo']
+        = $selectedAccount['AcctNo'];
+}
+
+
+/*
+ * No accounts yet:
+ * send user to My Accounts.
+ */
+
+if (
+    !$selectedAccount
+    && $page !== 'account-settings'
+) {
+
+    header(
+        'Location: dashboard.php?page=account-settings'
+    );
+
+    exit;
+}
+
+
+/* =========================================================
+   UNPAID BILLS
+
+   The billing service verifies that the selected account is an
+   active portal link before it reads the legacy, read-only ledger.
+   ========================================================= */
+
+$unpaidBills = [];
+$unpaidBillSummary = [
+    'total_due' => 0.0,
+    'unpaid_count' => 0,
+    'overdue_count' => 0,
+];
+$unpaidBillsError = false;
+
+if ($selectedAccount) {
+    try {
+        $unpaidBills = getUnpaidBills(
+            $pdo,
+            $userId,
+            (string) $selectedAccount['AcctNo']
+        );
+        $unpaidBillSummary = summarizeUnpaidBills($unpaidBills);
+    } catch (Throwable $e) {
+        $unpaidBillsError = true;
+        error_log('Unable to load unpaid PALECO bills: ' . $e->getMessage());
+    }
+}
+
+/* =========================================================
+   BILL HISTORY
+
+   palecxzp_pal_db.billhistory = READ ONLY
+   ========================================================= */
+
+$billHistory = [];
+$latestBill = null;
+$consumptionHistory = [];
+
+if ($selectedAccount) {
+
+    $selectedAcctNo = trim(
+        (string) $selectedAccount['AcctNo']
+    );
+
+
+    $billStmt = $pdo->prepare("
+        SELECT
+            TransID,
+            BillMonth,
+            BillNo,
+            ReadingDate,
+            BillDate,
+            DueDate,
+            PrsRdngKWH,
+            PrvRdngKWH,
+            KWH,
+            Evat,
+            PowerBill,
+            TotalOC,
+            TotalBill,
+            MeterReader
+        FROM palecxzp_pal_db.billhistory
+        WHERE AcctNo = ?
+        ORDER BY BillMonth DESC
+        LIMIT 12
+    ");
+
+    $billStmt->execute([
+        $selectedAcctNo
+    ]);
+
+    $billHistory = $billStmt->fetchAll(
+        PDO::FETCH_ASSOC
+    );
+
+
+    $latestBill = $billHistory[0] ?? null;
+
+
+    /*
+     * Oldest -> newest for chart.
+     */
+
+    $consumptionHistory = array_reverse(
+        $billHistory
+    );
+}
+
+
+/* =========================================================
+   CHART DATA
+   ========================================================= */
+
+$chartLabels = [];
+$chartValues = [];
+
+foreach ($consumptionHistory as $bill) {
+
+    $chartLabels[] = formatBillMonth(
+        $bill['BillMonth'] ?? ''
+    );
+
+    $chartValues[] = (float) (
+        $bill['KWH'] ?? 0
+    );
+}
+
+
+/* =========================================================
+   FLASH + CSRF
+   ========================================================= */
+
+$flash = $_SESSION['dashboard_flash']
+    ?? null;
+
+unset($_SESSION['dashboard_flash']);
+
+$csrf = dashboardCsrfToken();
+
+?>
+<!doctype html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>
+        <?= dashboardEscape($nav[$page]) ?>
+        | PALECO MCO Portal
+    </title>
+
+    <link
+        rel="icon"
+        href="assets/images/logo.png"
+    >
+
+    <script src="assets/js/portal-shell.js"></script>`r`n`r`n<?php if (
+    $consumptionHistory
+    && (
+        $page === 'dashboard'
+    )
+): ?>
+
+/* =========================================================
+   CONSUMPTION CHART
+   ========================================================= */
+
+(function () {
+
+    const canvas =
+        document.getElementById(
+            'consumptionChart'
+        );
+
+    if (!canvas) {
+        return;
+    }
+
+
+    const labels =
+        <?= json_encode(
+            $chartLabels,
+            JSON_UNESCAPED_UNICODE
+            | JSON_UNESCAPED_SLASHES
+        ) ?>;
+
+
+    const values =
+        <?= json_encode(
+            $chartValues,
+            JSON_NUMERIC_CHECK
+        ) ?>;
+
+
+    new Chart(
+        canvas,
+        {
+
+            type: 'line',
+
+            data: {
+
+                labels: labels,
+
+                datasets: [
+
+                    {
+
+                        label: 'kWh',
+
+                        data: values,
+
+                        borderColor:
+                            '#15803d',
+
+                        backgroundColor:
+                            'rgba(21, 128, 61, 0.08)',
+
+                        borderWidth: 2,
+
+                        pointRadius: 3,
+
+                        pointHoverRadius: 5,
+
+                        fill: true,
+
+                        tension: 0.3
+
+                    }
+
+                ]
+
+            },
+
+
+            options: {
+
+                responsive: true,
+
+                maintainAspectRatio: false,
+
+                interaction: {
+
+                    mode: 'index',
+
+                    intersect: false
+
+                },
+
+
+                plugins: {
+
+                    legend: {
+
+                        display: false
+
+                    },
+
+                    tooltip: {
+
+                        callbacks: {
+
+                            label:
+                                function (context) {
+
+                                    return (
+                                        Number(
+                                            context.parsed.y
+                                        ).toLocaleString()
+                                        + ' kWh'
+                                    );
+                                }
+
+                        }
+
+                    }
+
+                },
+
+
+                scales: {
+
+                    x: {
+
+                        grid: {
+
+                            display: false
+
+                        }
+
+                    },
+
+
+                    y: {
+
+                        beginAtZero: true,
+
+                        ticks: {
+
+                            callback:
+                                function (value) {
+
+                                    return (
+                                        Number(value)
+                                        .toLocaleString()
+                                        + ' kWh'
+                                    );
+                                }
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+    );
+
+})();
+
+<?php endif; ?>
+
+</script>
+
+
+</body>
+</html>

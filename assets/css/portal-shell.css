@@ -1,0 +1,14 @@
+:root { --portal-sidebar-width: 248px; }
+html.sidebar-collapsed { --portal-sidebar-width: 72px; }
+.portal-sidebar { width: 248px; height: 100vh; height: 100dvh; transition: width 200ms ease, transform 200ms ease; }
+.portal-main { min-width: 0; transition: margin-left 200ms ease, width 200ms ease; }
+.portal-nav-link, .portal-signout-link, .portal-profile-link, .portal-theme-toggle { display:flex; align-items:center; gap:.75rem; border-radius:.75rem; padding:.75rem; font-size:.875rem; font-weight:600; transition:background-color 150ms ease,color 150ms ease; }
+.portal-nav-link:focus-visible, .portal-signout-link:focus-visible, .portal-profile-link:focus-visible, .portal-theme-toggle:focus-visible { outline:2px solid #22c55e; outline-offset:2px; }
+.portal-signout-link { justify-content:center; border:1px solid rgb(226 232 240); color:rgb(51 65 85); }
+.portal-profile-link { background:rgb(248 250 252); }
+.portal-theme-toggle { justify-content:space-between; border:1px solid rgb(226 232 240); color:rgb(51 65 85); }
+.dark .portal-signout-link, .dark .portal-theme-toggle { border-color:rgb(51 65 85); color:rgb(226 232 240); }
+.dark .portal-profile-link { background:rgb(30 41 59 / .5); }
+.portal-brand { display:flex; flex-direction:column; gap:.5rem; padding:1rem 1.25rem; } .portal-brand-top { display:flex; min-width:0; align-items:center; justify-content:space-between; gap:.75rem; } .portal-brand-copy { min-width:0; } @media (min-width:1024px) { .portal-sidebar { transform:translateX(0)!important; } .portal-main { margin-left:var(--portal-sidebar-width); width:calc(100% - var(--portal-sidebar-width)); } .portal-desktop-collapse { display:inline-flex; } html.sidebar-collapsed .portal-sidebar { width:72px; } html.sidebar-collapsed .portal-expanded-only { display:none; } html.sidebar-collapsed .portal-brand { align-items:center; gap:.5rem; padding:.75rem .5rem; } html.sidebar-collapsed .portal-brand-top { flex-direction:column; align-items:center; gap:.5rem; } html.sidebar-collapsed .portal-desktop-collapse { margin-left:0; } html.sidebar-collapsed .portal-nav-link, html.sidebar-collapsed .portal-signout-link, html.sidebar-collapsed .portal-profile-link, html.sidebar-collapsed .portal-theme-toggle { justify-content:center; } html.sidebar-collapsed .portal-theme-toggle { padding:.75rem; } }
+@media (max-width:1023px) { .portal-desktop-collapse { display:none; } .portal-sidebar { width:248px; } }
+@media (prefers-reduced-motion:reduce) { .portal-sidebar, .portal-main { transition:none; } }

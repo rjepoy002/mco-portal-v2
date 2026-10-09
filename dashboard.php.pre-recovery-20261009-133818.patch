@@ -1,0 +1,2509 @@
+﻿diff --git a/dashboard.php b/dashboard.php
+index 1ed4e52c..fec6d08c 100644
+--- a/dashboard.php
++++ b/dashboard.php
+@@ -1318,2503 +1318,7 @@ $csrf = dashboardCsrfToken();
+         href="assets/images/logo.png"
+     >
+ 
+-    <script>
+-        (function () {
+-            const savedTheme = localStorage.getItem('mco-theme');
+-            const systemDark = window.matchMedia(
+-                '(prefers-color-scheme: dark)'
+-            ).matches;
+-
+-            document.documentElement.classList.toggle(
+-                'dark',
+-                savedTheme === 'dark' || (!savedTheme && systemDark)
+-            );
+-        })();
+-    </script>
+-
+-
+-    <!--
+-        Development only.
+-        Requires internet access for Tailwind CDN.
+-    -->
+-
+-    <script src="https://cdn.tailwindcss.com"></script>
+-
+-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+-
+-
+-    <script>
+-
+-        tailwind.config = {
+-
+-            darkMode: 'class',
+-
+-            theme: {
+-
+-                extend: {
+-
+-                    colors: {
+-
+-                        paleco: {
+-
+-                            50: '#f0fdf4',
+-                            100: '#dcfce7',
+-                            200: '#bbf7d0',
+-                            500: '#22c55e',
+-                            600: '#16a34a',
+-                            700: '#15803d',
+-                            800: '#166534',
+-                            900: '#14532d'
+-
+-                        }
+-
+-                    },
+-
+-                    boxShadow: {
+-
+-                        card:
+-                            '0 1px 3px rgba(15,23,42,.06),' +
+-                            '0 1px 2px rgba(15,23,42,.04)'
+-
+-                    }
+-
+-                }
+-
+-            }
+-
+-        };
+-
+-    </script>
+-
+-</head>
+-
+-
+-<body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
+-
+-
+-<div class="min-h-screen lg:flex">
+-
+-
+-    <!-- ==================================================
+-         MOBILE BACKDROP
+-         ================================================== -->
+-
+-    <div
+-        id="mobileBackdrop"
+-        class="
+-            fixed inset-0 z-40
+-            hidden
+-            bg-slate-950/40
+-            backdrop-blur-sm
+-            lg:hidden
+-        "
+-    ></div>
+-
+-
+-    <!-- ==================================================
+-         SIDEBAR
+-         ================================================== -->
+-
+-    <aside
+-        id="sidebar"
+-        class="
+-            fixed inset-y-0 left-0 z-50
+-            flex w-72
+-            -translate-x-full
+-            flex-col
+-            border-r border-slate-200 dark:border-slate-800
+-            bg-white dark:bg-slate-900
+-            transition-transform duration-200
+-            lg:static
+-            lg:translate-x-0
+-        "
+-    >
+-
+-        <div
+-            class="
+-                flex h-20
+-                items-center
+-                gap-3
+-                border-b border-slate-100 dark:border-slate-800
+-                px-6
+-            "
+-        >
+-
+-            <div
+-                class="
+-                    flex h-11 w-11
+-                    items-center justify-center
+-                    overflow-hidden
+-                    rounded-xl
+-                    ring-1 ring-slate-200 dark:ring-slate-700
+-                "
+-            >
+-
+-                <img
+-                    src="assets/images/logo.png"
+-                    alt="PALECO"
+-                    class="h-9 w-9 object-contain"
+-                >
+-
+-            </div>
+-
+-
+-            <div>
+-
+-                <div
+-                    class="
+-                        text-sm
+-                        font-bold
+-                        tracking-wide
+-                    "
+-                >
+-                    PALECO
+-                </div>
+-
+-                <div
+-                    class="
+-                        text-xs
+-                        font-medium
+-                        text-slate-500
+-                    "
+-                >
+-                    MCO Portal
+-                </div>
+-
+-            </div>
+-
+-
+-            <button
+-                type="button"
+-                id="closeSidebar"
+-                class="
+-                    ml-auto
+-                    rounded-lg
+-                    p-2
+-                    text-slate-500 dark:text-slate-400
+-                    hover:bg-slate-100 dark:hover:bg-slate-800
+-                    lg:hidden
+-                "
+-                aria-label="Close navigation"
+-            >
+-                ✕
+-            </button>
+-
+-        </div>
+-
+-
+-        <!-- Navigation -->
+-
+-        <nav
+-            class="
+-                flex-1
+-                space-y-1
+-                overflow-y-auto
+-                px-4 py-6
+-            "
+-            aria-label="Main navigation"
+-        >
+-
+-            <?php foreach ($nav as $key => $title): ?>
+-
+-                <?php $active = $page === $key; ?>
+-
+-                <a
+-                    href="dashboard.php?page=<?= dashboardEscape($key) ?>"
+-                    class="
+-                        flex items-center
+-                        rounded-xl
+-                        px-4 py-3
+-                        text-sm
+-                        font-medium
+-                        transition
+-
+-                        <?= $active
+-                            ? 'bg-paleco-50 text-paleco-800 dark:bg-paleco-900 dark:text-paleco-100'
+-                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white'
+-                        ?>
+-                    "
+-                    <?= $active
+-                        ? 'aria-current="page"'
+-                        : ''
+-                    ?>
+-                >
+-                    <?= dashboardEscape($title) ?>
+-                </a>
+-
+-            <?php endforeach; ?>
+-
+-            <a
+-                href="consumer-education.php"
+-                class="
+-                    flex items-center
+-                    rounded-xl
+-                    px-4 py-3
+-                    text-sm
+-                    font-medium
+-                    text-slate-600
+-                    transition
+-                    hover:bg-slate-100
+-                    hover:text-slate-900
+-                    dark:text-slate-400
+-                    dark:hover:bg-slate-800
+-                    dark:hover:text-white
+-                "
+-            >
+-                Consumer Education
+-            </a>
+-
+-        </nav>
+-
+-
+-        <!-- User -->
+-
+-        <div
+-            class="
+-                border-t
+-                border-slate-100 dark:border-slate-800
+-                p-4
+-            "
+-        >
+-
+-            <div
+-                class="
+-                    mb-3
+-                    rounded-xl
+-                    bg-slate-50 dark:bg-slate-800/50
+-                    px-4 py-3
+-                "
+-            >
+-
+-                <div
+-                    class="
+-                        truncate
+-                        text-sm
+-                        font-semibold
+-                    "
+-                >
+-                    <?= dashboardEscape($userDisplayName) ?>
+-                </div>
+-
+-                <?php if ($userEmail !== ''): ?>
+-
+-                    <div
+-                        class="
+-                            mt-0.5
+-                            truncate
+-                            text-xs
+-                            text-slate-500 dark:text-slate-400
+-                        "
+-                    >
+-                        <?= dashboardEscape($userEmail) ?>
+-                    </div>
+-
+-                <?php endif; ?>
+-
+-            </div>
+-
+-
+-            <a
+-                href="logout.php"
+-                class="
+-                    flex w-full
+-                    justify-center
+-                    rounded-xl
+-                    border border-slate-200 dark:border-slate-700
+-                    px-4 py-2.5
+-                    text-sm
+-                    font-semibold
+-                    text-slate-700 dark:text-slate-200
+-                    transition
+-                    hover:bg-slate-50 dark:hover:bg-slate-800
+-                "
+-            >
+-                Sign Out
+-            </a>
+-
+-        </div>
+-
+-    </aside>
+-
+-
+-    <!-- ==================================================
+-         MAIN
+-         ================================================== -->
+-
+-    <main class="min-w-0 flex-1">
+-
+-
+-        <!-- Top bar -->
+-
+-        <header
+-            class="
+-                sticky top-0 z-30
+-                border-b border-slate-200 dark:border-slate-800
+-                bg-white/95 dark:bg-slate-900/95
+-                backdrop-blur
+-            "
+-        >
+-
+-            <div
+-                class="
+-                    mx-auto
+-                    flex h-20
+-                    max-w-screen-2xl
+-                    items-center
+-                    gap-4
+-                    px-4
+-                    sm:px-6
+-                    lg:px-8
+-                "
+-            >
+-
+-                <button
+-                    type="button"
+-                    id="openSidebar"
+-                    class="
+-                        rounded-xl
+-                        border border-slate-200 dark:border-slate-700
+-                        bg-white dark:bg-slate-900
+-                        p-2.5
+-                        text-slate-600 dark:text-slate-300
+-                        shadow-sm
+-                        lg:hidden
+-                    "
+-                    aria-label="Open navigation"
+-                >
+-                    ☰
+-                </button>
+-
+-                <button
+-                    id="themeToggle"
+-                    type="button"
+-                    class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+-                    aria-label="Switch to dark mode"
+-                    title="Switch to dark mode"
+-                ></button>
+-
+-
+-                <div class="min-w-0 flex-1">
+-
+-                    <p
+-                        class="
+-                            hidden
+-                            text-xs
+-                            font-semibold
+-                            uppercase
+-                            tracking-[.14em]
+-                            text-slate-400
+-                            sm:block
+-                        "
+-                    >
+-                        Palawan Electric Cooperative
+-                    </p>
+-
+-                    <h1
+-                        class="
+-                            truncate
+-                            text-xl
+-                            font-bold
+-                            tracking-tight
+-                        "
+-                    >
+-                        <?= dashboardEscape($nav[$page]) ?>
+-                    </h1>
+-
+-                </div>
+-
+-
+-                <div
+-                    class="
+-                        hidden
+-                        rounded-full
+-                        bg-slate-100 dark:bg-slate-800
+-                        px-4 py-2
+-                        text-sm
+-                        font-semibold
+-                        text-slate-700 dark:text-slate-200
+-                        sm:block
+-                    "
+-                >
+-                    <?= dashboardEscape($userDisplayName) ?>
+-                </div>
+-
+-            </div>
+-
+-        </header>
+-
+-
+-        <!-- Content -->
+-
+-        <div
+-            class="
+-                mx-auto
+-                max-w-screen-2xl
+-                space-y-6
+-                p-4
+-                sm:p-6
+-                lg:p-8
+-                dark:[&_.bg-white]:bg-slate-900
+-                dark:[&_.bg-slate-50]:bg-slate-800/50
+-                dark:[&_.border-slate-100]:border-slate-800
+-                dark:[&_.border-slate-200]:border-slate-800
+-                dark:[&_.border-slate-300]:border-slate-700
+-                dark:[&_.divide-slate-100]:divide-slate-800
+-                dark:[&_.divide-slate-200]:divide-slate-800
+-                dark:[&_.text-slate-900]:text-slate-100
+-                dark:[&_.text-slate-700]:text-slate-200
+-                dark:[&_.text-slate-600]:text-slate-300
+-                dark:[&_.text-slate-500]:text-slate-400
+-                dark:[&_.text-slate-400]:text-slate-500
+-                dark:[&_.bg-paleco-50]:bg-paleco-900
+-                dark:[&_.text-paleco-700]:text-paleco-200
+-                dark:[&_input]:bg-slate-900
+-                dark:[&_input]:text-slate-100
+-                dark:[&_input]:placeholder:text-slate-500
+-                dark:[&_select]:border-slate-700
+-                dark:[&_select]:bg-slate-900
+-                dark:[&_select]:text-slate-100
+-                dark:[&_.hover\:bg-slate-50:hover]:bg-slate-800/50
+-            "
+-        >
+-
+-
+-            <!-- Flash -->
+-
+-            <?php if ($flash): ?>
+-
+-                <div
+-                    role="status"
+-                    class="
+-                        rounded-xl
+-                        border
+-                        px-4 py-3
+-                        text-sm
+-                        font-medium
+-
+-                        <?= $flash['type'] === 'error'
+-                            ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+-                            : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
+-                        ?>
+-                    "
+-                >
+-                    <?= dashboardEscape($flash['message']) ?>
+-                </div>
+-
+-            <?php endif; ?>
+-
+-
+-            <!-- =================================================
+-                 VIEWING ACCOUNT
+-                 ================================================= -->
+-
+-            <?php if ($selectedAccount): ?>
+-
+-                <section
+-                    class="
+-                        rounded-2xl
+-                        border border-slate-200
+-                        bg-white
+-                        p-5
+-                        shadow-card
+-                        sm:p-6
+-                    "
+-                >
+-
+-                    <div
+-                        class="
+-                            grid gap-5
+-                            lg:grid-cols-[1fr_auto]
+-                            lg:items-center
+-                        "
+-                    >
+-
+-                        <div class="min-w-0">
+-
+-                            <p
+-                                class="
+-                                    text-xs
+-                                    font-bold
+-                                    uppercase
+-                                    tracking-[.14em]
+-                                    text-paleco-700
+-                                "
+-                            >
+-                                Viewing Account
+-                            </p>
+-
+-
+-                            <div
+-                                class="
+-                                    mt-1
+-                                    flex
+-                                    flex-wrap
+-                                    items-center
+-                                    gap-2
+-                                "
+-                            >
+-
+-                                <h2
+-                                    class="
+-                                        truncate
+-                                        text-xl
+-                                        font-bold
+-                                    "
+-                                >
+-                                    <?= dashboardEscape(
+-                                        $selectedAccount['account_nickname']
+-                                        ?: (
+-                                            $selectedAccount['Name']
+-                                            ?: 'PALECO account'
+-                                        )
+-                                    ) ?>
+-                                </h2>
+-
+-
+-                                <?php if ($selectedAccount['is_primary']): ?>
+-
+-                                    <span
+-                                        class="
+-                                            rounded-full
+-                                            bg-paleco-50
+-                                            px-2.5 py-1
+-                                            text-xs
+-                                            font-bold
+-                                            text-paleco-700
+-                                        "
+-                                    >
+-                                        PRIMARY
+-                                    </span>
+-
+-                                <?php endif; ?>
+-
+-                            </div>
+-
+-
+-                            <p
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    text-slate-500
+-                                "
+-                            >
+-                                <?= dashboardEscape(
+-                                    formatConsumerAccountCode($selectedAccount)
+-                                ) ?>
+-                            </p>
+-
+-                        </div>
+-
+-
+-                        <?php if (count($linkedAccounts) > 1): ?>
+-
+-                            <form
+-                                method="post"
+-                                action="dashboard.php"
+-                                class="w-full lg:w-auto"
+-                            >
+-
+-                                <input
+-                                    type="hidden"
+-                                    name="csrf_token"
+-                                    value="<?= dashboardEscape($csrf) ?>"
+-                                >
+-
+-                                <input
+-                                    type="hidden"
+-                                    name="action"
+-                                    value="switch"
+-                                >
+-
+-                                <input
+-                                    type="hidden"
+-                                    name="return_page"
+-                                    value="<?= dashboardEscape($page) ?>"
+-                                >
+-
+-
+-                                <label
+-                                    for="account-selector"
+-                                    class="
+-                                        mb-1.5
+-                                        block
+-                                        text-xs
+-                                        font-semibold
+-                                        text-slate-500
+-                                    "
+-                                >
+-                                    Switch account
+-                                </label>
+-
+-
+-                                <div
+-                                    class="
+-                                        flex
+-                                        flex-col
+-                                        gap-2
+-                                        sm:flex-row
+-                                    "
+-                                >
+-
+-                                    <select
+-                                        id="account-selector"
+-                                        name="account_number"
+-                                        class="
+-                                            rounded-xl
+-                                            border border-slate-300
+-                                            bg-white
+-                                            px-3 py-2.5
+-                                            text-sm
+-                                            outline-none
+-                                            focus:border-paleco-500
+-                                            focus:ring-4
+-                                            focus:ring-paleco-500/10
+-                                            lg:min-w-72
+-                                        "
+-                                    >
+-
+-                                        <?php foreach ($linkedAccounts as $account): ?>
+-
+-                                            <option
+-                                                value="<?= dashboardEscape($account['AcctNo']) ?>"
+-                                                <?= $account['AcctNo']
+-                                                    === $selectedAccount['AcctNo']
+-                                                    ? 'selected'
+-                                                    : ''
+-                                                ?>
+-                                            >
+-                                                <?= dashboardEscape(
+-                                                    (
+-                                                        $account['account_nickname']
+-                                                        ?: (
+-                                                            $account['Name']
+-                                                            ?: 'PALECO account'
+-                                                        )
+-                                                    )
+-                                                    . ' · '
+-                                                    . formatConsumerAccountCode($account)
+-                                                ) ?>
+-                                                <?= $account['is_primary']
+-                                                    ? ' (Primary)'
+-                                                    : ''
+-                                                ?>
+-                                            </option>
+-
+-                                        <?php endforeach; ?>
+-
+-                                    </select>
+-
+-
+-                                    <button
+-                                        type="submit"
+-                                        class="
+-                                            rounded-xl
+-                                            bg-paleco-700
+-                                            px-5 py-2.5
+-                                            text-sm
+-                                            font-semibold
+-                                            text-white
+-                                            hover:bg-paleco-800
+-                                        "
+-                                    >
+-                                        View
+-                                    </button>
+-
+-                                </div>
+-
+-                            </form>
+-
+-                        <?php endif; ?>
+-
+-                    </div>
+-
+-                </section>
+-
+-            <?php endif; ?>
+-
+-
+-            <!-- =================================================
+-                 MY ACCOUNTS
+-                 ================================================= -->
+-
+-            <?php if ($page === 'account-settings'): ?>
+-
+-                <section>
+-
+-                    <p
+-                        class="
+-                            text-xs
+-                            font-bold
+-                            uppercase
+-                            tracking-[.14em]
+-                            text-paleco-700
+-                        "
+-                    >
+-                        Linked Accounts
+-                    </p>
+-
+-                    <h2
+-                        class="
+-                            mt-1
+-                            text-2xl
+-                            font-bold
+-                        "
+-                    >
+-                        Your linked accounts
+-                    </h2>
+-
+-                    <p
+-                        class="
+-                            mt-1
+-                            text-sm
+-                            text-slate-500
+-                        "
+-                    >
+-                        Existing eBills accounts registered
+-                        with your email are linked automatically.
+-                        You can also add another account using
+-                        its account and meter numbers.
+-                    </p>
+-
+-                </section>
+-
+-
+-                <?php if (!$linkedAccounts): ?>
+-
+-                    <div
+-                        class="
+-                            rounded-2xl
+-                            border
+-                            border-dashed
+-                            border-slate-300
+-                            bg-white
+-                            px-6 py-10
+-                            text-center
+-                        "
+-                    >
+-
+-                        <h3 class="font-semibold">
+-                            No linked accounts
+-                        </h3>
+-
+-                        <p
+-                            class="
+-                                mt-2
+-                                text-sm
+-                                text-slate-500
+-                            "
+-                        >
+-                            Add your PALECO account below.
+-                        </p>
+-
+-                    </div>
+-
+-                <?php endif; ?>
+-
+-
+-                <!-- Account cards -->
+-
+-                <div
+-                    class="
+-                        grid gap-5
+-                        md:grid-cols-2
+-                        xl:grid-cols-3
+-                    "
+-                >
+-
+-                    <?php foreach ($linkedAccounts as $account): ?>
+-
+-                        <article
+-                            class="
+-                                rounded-2xl
+-                                border border-slate-200
+-                                bg-white
+-                                p-5
+-                                shadow-card
+-                            "
+-                        >
+-
+-                            <div
+-                                class="
+-                                    flex
+-                                    items-start
+-                                    justify-between
+-                                    gap-3
+-                                "
+-                            >
+-
+-                                <div class="min-w-0">
+-
+-                                    <p
+-                                        class="
+-                                            text-xs
+-                                            font-bold
+-                                            uppercase
+-                                            tracking-[.12em]
+-                                            text-slate-400
+-                                        "
+-                                    >
+-                                        <?= dashboardEscape(
+-                                            formatConsumerAccountCode($account)
+-                                        ) ?>
+-                                    </p>
+-
+-                                    <h3
+-                                        class="
+-                                            mt-1
+-                                            truncate
+-                                            text-lg
+-                                            font-bold
+-                                        "
+-                                    >
+-                                        <?= dashboardEscape(
+-                                            $account['account_nickname']
+-                                            ?: (
+-                                                $account['Name']
+-                                                ?: 'PALECO account'
+-                                            )
+-                                        ) ?>
+-                                    </h3>
+-
+-                                </div>
+-
+-
+-                                <?php if ($account['is_primary']): ?>
+-
+-                                    <span
+-                                        class="
+-                                            shrink-0
+-                                            rounded-full
+-                                            bg-paleco-50
+-                                            px-2.5 py-1
+-                                            text-xs
+-                                            font-bold
+-                                            text-paleco-700
+-                                        "
+-                                    >
+-                                        PRIMARY
+-                                    </span>
+-
+-                                <?php endif; ?>
+-
+-                            </div>
+-
+-
+-                            <div
+-                                class="
+-                                    mt-4
+-                                    space-y-1
+-                                    text-sm
+-                                "
+-                            >
+-
+-                                <p class="font-medium">
+-                                    <?= dashboardEscape(
+-                                        $account['Name']
+-                                        ?: 'Account holder unavailable'
+-                                    ) ?>
+-                                </p>
+-
+-                                <p class="text-slate-500">
+-                                    <?= dashboardEscape(
+-                                        $account['Address']
+-                                        ?: 'Service address unavailable'
+-                                    ) ?>
+-                                </p>
+-
+-                                <?php if (!empty($account['MeterSerial'])): ?>
+-
+-                                    <p
+-                                        class="
+-                                            pt-2
+-                                            text-xs
+-                                            text-slate-400
+-                                        "
+-                                    >
+-                                        Meter:
+-                                        <?= dashboardEscape(
+-                                            $account['MeterSerial']
+-                                        ) ?>
+-                                    </p>
+-
+-                                <?php endif; ?>
+-
+-                            </div>
+-
+-
+-                            <!-- Actions -->
+-
+-                            <div
+-                                class="
+-                                    mt-5
+-                                    flex
+-                                    flex-wrap
+-                                    gap-2
+-                                "
+-                            >
+-
+-                                <form method="post">
+-
+-                                    <input
+-                                        type="hidden"
+-                                        name="csrf_token"
+-                                        value="<?= dashboardEscape($csrf) ?>"
+-                                    >
+-
+-                                    <input
+-                                        type="hidden"
+-                                        name="action"
+-                                        value="switch"
+-                                    >
+-
+-                                    <input
+-                                        type="hidden"
+-                                        name="account_number"
+-                                        value="<?= dashboardEscape($account['AcctNo']) ?>"
+-                                    >
+-
+-                                    <button
+-                                        type="submit"
+-                                        class="
+-                                            rounded-lg
+-                                            border border-slate-200
+-                                            px-3 py-2
+-                                            text-sm
+-                                            font-semibold
+-                                            hover:bg-slate-50
+-                                        "
+-                                    >
+-                                        View Account
+-                                    </button>
+-
+-                                </form>
+-
+-
+-                                <?php if (!$account['is_primary']): ?>
+-
+-                                    <form method="post">
+-
+-                                        <input
+-                                            type="hidden"
+-                                            name="csrf_token"
+-                                            value="<?= dashboardEscape($csrf) ?>"
+-                                        >
+-
+-                                        <input
+-                                            type="hidden"
+-                                            name="action"
+-                                            value="primary"
+-                                        >
+-
+-                                        <input
+-                                            type="hidden"
+-                                            name="account_number"
+-                                            value="<?= dashboardEscape($account['AcctNo']) ?>"
+-                                        >
+-
+-                                        <button
+-                                            type="submit"
+-                                            class="
+-                                                rounded-lg
+-                                                bg-paleco-50
+-                                                px-3 py-2
+-                                                text-sm
+-                                                font-semibold
+-                                                text-paleco-700
+-                                                hover:bg-paleco-100
+-                                            "
+-                                        >
+-                                            Make Primary
+-                                        </button>
+-
+-                                    </form>
+-
+-                                <?php endif; ?>
+-
+-                            </div>
+-
+-
+-                            <!-- Label -->
+-
+-                            <form
+-                                method="post"
+-                                class="
+-                                    mt-5
+-                                    border-t
+-                                    border-slate-100
+-                                    pt-4
+-                                "
+-                            >
+-
+-                                <input
+-                                    type="hidden"
+-                                    name="csrf_token"
+-                                    value="<?= dashboardEscape($csrf) ?>"
+-                                >
+-
+-                                <input
+-                                    type="hidden"
+-                                    name="action"
+-                                    value="rename"
+-                                >
+-
+-                                <input
+-                                    type="hidden"
+-                                    name="account_number"
+-                                    value="<?= dashboardEscape($account['AcctNo']) ?>"
+-                                >
+-
+-
+-                                <label
+-                                    class="
+-                                        mb-1.5
+-                                        block
+-                                        text-xs
+-                                        font-semibold
+-                                        text-slate-500
+-                                    "
+-                                >
+-                                    Friendly label
+-                                </label>
+-
+-
+-                                <div class="flex gap-2">
+-
+-                                    <input
+-                                        name="label"
+-                                        maxlength="100"
+-                                        value="<?= dashboardEscape(
+-                                            $account['account_nickname']
+-                                            ?? ''
+-                                        ) ?>"
+-                                        placeholder="e.g. Home"
+-                                        class="
+-                                            min-w-0
+-                                            flex-1
+-                                            rounded-xl
+-                                            border border-slate-300
+-                                            px-3 py-2
+-                                            text-sm
+-                                            outline-none
+-                                            focus:border-paleco-500
+-                                            focus:ring-4
+-                                            focus:ring-paleco-500/10
+-                                        "
+-                                    >
+-
+-                                    <button
+-                                        type="submit"
+-                                        class="
+-                                            rounded-xl
+-                                            bg-slate-900
+-                                            px-4 py-2
+-                                            text-sm
+-                                            font-semibold
+-                                            text-white
+-                                            hover:bg-slate-800
+-                                        "
+-                                    >
+-                                        Save
+-                                    </button>
+-
+-                                </div>
+-
+-                            </form>
+-
+-                        </article>
+-
+-                    <?php endforeach; ?>
+-
+-                </div>
+-
+-
+-                <!-- Add account -->
+-
+-                <section
+-                    class="
+-                        rounded-2xl
+-                        border border-slate-200
+-                        bg-white
+-                        p-5
+-                        shadow-card
+-                        sm:p-6
+-                    "
+-                >
+-
+-                    <p
+-                        class="
+-                            text-xs
+-                            font-bold
+-                            uppercase
+-                            tracking-[.14em]
+-                            text-paleco-700
+-                        "
+-                    >
+-                        Add Account
+-                    </p>
+-
+-                    <h2
+-                        class="
+-                            mt-1
+-                            text-xl
+-                            font-bold
+-                        "
+-                    >
+-                        Link another PALECO account
+-                    </h2>
+-
+-                    <p
+-                        class="
+-                            mt-1
+-                            text-sm
+-                            text-slate-500
+-                        "
+-                    >
+-                        Enter the account number and meter
+-                        number shown on your PALECO bill.
+-                    </p>
+-
+-
+-                    <form
+-                        method="post"
+-                        class="
+-                            mt-6
+-                            grid gap-4
+-                            md:grid-cols-3
+-                        "
+-                    >
+-
+-                        <input
+-                            type="hidden"
+-                            name="csrf_token"
+-                            value="<?= dashboardEscape($csrf) ?>"
+-                        >
+-
+-                        <input
+-                            type="hidden"
+-                            name="action"
+-                            value="add"
+-                        >
+-
+-
+-                        <label
+-                            class="
+-                                text-sm
+-                                font-semibold
+-                                text-slate-700
+-                            "
+-                        >
+-
+-                            Account number
+-
+-                            <input
+-                                name="account_number"
+-                                maxlength="15"
+-                                required
+-                                autocomplete="off"
+-                                class="
+-                                    mt-1.5
+-                                    block w-full
+-                                    rounded-xl
+-                                    border border-slate-300
+-                                    px-3 py-2.5
+-                                    outline-none
+-                                    focus:border-paleco-500
+-                                    focus:ring-4
+-                                    focus:ring-paleco-500/10
+-                                "
+-                            >
+-
+-                        </label>
+-
+-
+-                        <label
+-                            class="
+-                                text-sm
+-                                font-semibold
+-                                text-slate-700
+-                            "
+-                        >
+-
+-                            Meter number
+-
+-                            <input
+-                                name="meter_number"
+-                                maxlength="20"
+-                                required
+-                                autocomplete="off"
+-                                class="
+-                                    mt-1.5
+-                                    block w-full
+-                                    rounded-xl
+-                                    border border-slate-300
+-                                    px-3 py-2.5
+-                                    outline-none
+-                                    focus:border-paleco-500
+-                                    focus:ring-4
+-                                    focus:ring-paleco-500/10
+-                                "
+-                            >
+-
+-                        </label>
+-
+-
+-                        <label
+-                            class="
+-                                text-sm
+-                                font-semibold
+-                                text-slate-700
+-                            "
+-                        >
+-
+-                            Friendly label
+-
+-                            <span
+-                                class="
+-                                    font-normal
+-                                    text-slate-400
+-                                "
+-                            >
+-                                (optional)
+-                            </span>
+-
+-                            <input
+-                                name="label"
+-                                maxlength="100"
+-                                placeholder="e.g. Home"
+-                                class="
+-                                    mt-1.5
+-                                    block w-full
+-                                    rounded-xl
+-                                    border border-slate-300
+-                                    px-3 py-2.5
+-                                    outline-none
+-                                    focus:border-paleco-500
+-                                    focus:ring-4
+-                                    focus:ring-paleco-500/10
+-                                "
+-                            >
+-
+-                        </label>
+-
+-
+-                        <div class="md:col-span-3">
+-
+-                            <button
+-                                type="submit"
+-                                class="
+-                                    rounded-xl
+-                                    bg-paleco-700
+-                                    px-5 py-2.5
+-                                    text-sm
+-                                    font-semibold
+-                                    text-white
+-                                    hover:bg-paleco-800
+-                                "
+-                            >
+-                                Add PALECO Account
+-                            </button>
+-
+-                        </div>
+-
+-                    </form>
+-
+-                </section>
+-
+-
+-            <!-- =================================================
+-                 PROFILE
+-                 ================================================= -->
+-
+-            <!-- =================================================
+-                 MY PROFILE
+-                 ================================================= -->
+-
+-                <section
+-                    class="
+-                        max-w-2xl
+-                        rounded-2xl
+-                        border border-slate-200
+-                        bg-white
+-                        p-6
+-                        shadow-card
+-                    "
+-                >
+-
+-                    <p
+-                        class="
+-                            text-xs
+-                            font-bold
+-                            uppercase
+-                            tracking-[.14em]
+-                            text-paleco-700
+-                        "
+-                    >
+-                        My Profile
+-                    </p>
+-
+-                    <h2
+-                        class="
+-                            mt-2
+-                            text-2xl
+-                            font-bold
+-                        "
+-                    >
+-                        <?= dashboardEscape($userDisplayName) ?>
+-                    </h2>
+-
+-                    <p
+-                        class="
+-                            mt-1
+-                            text-sm
+-                            text-slate-500
+-                        "
+-                    >
+-                        <?= dashboardEscape($userEmail) ?>
+-                    </p>
+-
+-                </section>
+-
+-                <section class="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+-                    <p class="text-xs font-bold uppercase tracking-[.14em] text-paleco-700">Security &amp; Preferences</p>
+-                    <h2 class="mt-2 text-xl font-bold">Password and appearance</h2>
+-                    <div class="mt-5 grid gap-4 sm:grid-cols-2">
+-                        <div class="rounded-xl bg-slate-50 p-4">
+-                            <h3 class="font-semibold">Password</h3>
+-                            <p class="mt-1 text-sm text-slate-500">Request a secure password-reset link for your portal account.</p>
+-                            <a href="forgot-password.php" class="mt-3 inline-block text-sm font-semibold text-paleco-700 hover:text-paleco-800">Reset password →</a>
+-                        </div>
+-                        <div class="rounded-xl bg-slate-50 p-4">
+-                            <h3 class="font-semibold">Appearance</h3>
+-                            <p class="mt-1 text-sm text-slate-500">Use the theme button in the page header to switch between light and dark mode.</p>
+-                        </div>
+-                    </div>
+-                </section>
+-
+-
+-            <!-- =================================================
+-                 DASHBOARD / BILLS / HISTORY
+-                 ================================================= -->
+-
+-            <?php else: ?>
+-
+-
+-                <!-- Account heading -->
+-
+-                <section
+-                    class="
+-                        flex
+-                        flex-col
+-                        gap-3
+-                        sm:flex-row
+-                        sm:items-end
+-                        sm:justify-between
+-                    "
+-                >
+-
+-                    <div>
+-
+-                        <p
+-                            class="
+-                                text-xs
+-                                font-bold
+-                                uppercase
+-                                tracking-[.14em]
+-                                text-paleco-700
+-                            "
+-                        >
+-                            Account Overview
+-                        </p>
+-
+-                        <h2
+-                            class="
+-                                mt-1
+-                                text-2xl
+-                                font-bold
+-                            "
+-                        >
+-                            <?= dashboardEscape(
+-                                $selectedAccount['Name']
+-                                ?: 'Service account'
+-                            ) ?>
+-                        </h2>
+-
+-                        <p
+-                            class="
+-                                mt-1
+-                                text-sm
+-                                text-slate-500
+-                            "
+-                        >
+-                            <?= dashboardEscape(
+-                                $selectedAccount['Address']
+-                                ?: 'Service address unavailable'
+-                            ) ?>
+-                        </p>
+-
+-                    </div>
+-
+-
+-                    <a
+-                        href="dashboard.php?page=account-settings"
+-                        class="
+-                            text-sm
+-                            font-semibold
+-                            text-paleco-700
+-                            hover:text-paleco-800
+-                        "
+-                    >
+-                        Manage accounts →
+-                    </a>
+-
+-                </section>
+-
+-
+-                <?php if ($page === 'bills'): ?>
+-                    <nav
+-                        class="flex border-b border-slate-200 dark:border-slate-800"
+-                        aria-label="My Bills sections"
+-                        role="tablist"
+-                    >
+-                        <a
+-                            href="dashboard.php?page=bills&amp;tab=unpaid"
+-                            role="tab"
+-                            aria-selected="<?= $billsTab === 'unpaid' ? 'true' : 'false' ?>"
+-                            class="border-b-2 px-4 py-3 text-sm font-semibold <?= $billsTab === 'unpaid' ? 'border-paleco-700 text-paleco-700 dark:text-paleco-200' : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white' ?>"
+-                        >
+-                            Unpaid Bills
+-                        </a>
+-                        <a
+-                            href="dashboard.php?page=bills&amp;tab=history"
+-                            role="tab"
+-                            aria-selected="<?= $billsTab === 'history' ? 'true' : 'false' ?>"
+-                            class="border-b-2 px-4 py-3 text-sm font-semibold <?= $billsTab === 'history' ? 'border-paleco-700 text-paleco-700 dark:text-paleco-200' : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white' ?>"
+-                        >
+-                            Bill History
+-                        </a>
+-                    </nav>
+-                <?php endif; ?>
+-                <!-- =================================================
+-                     SUMMARY
+-                     ================================================= -->
+-
+-                <div
+-                    class="
+-                        grid gap-4
+-                        md:grid-cols-3
+-                    "
+-                >
+-
+-
+-                    <!-- Amount due -->
+-
+-                    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+-                        <p class="text-xs font-bold uppercase tracking-[.12em] text-slate-400">Amount Due</p>
+-                        <?php if ($unpaidBillsError): ?>
+-                            <h3 class="mt-4 text-2xl font-bold">—</h3>
+-                            <p class="mt-1 text-sm text-slate-500">Balance is temporarily unavailable.</p>
+-                        <?php else: ?>
+-                            <h3 class="mt-4 text-2xl font-bold">
+-                                ₱<?= number_format((float) $unpaidBillSummary['total_due'], 2) ?>
+-                            </h3>
+-                            <p class="mt-1 text-sm text-slate-500">
+-                                <?= (int) $unpaidBillSummary['unpaid_count'] ?> unpaid bill<?= (int) $unpaidBillSummary['unpaid_count'] === 1 ? '' : 's' ?>
+-                                <?php if ($unpaidBillSummary['overdue_count']): ?>
+-                                    · <?= (int) $unpaidBillSummary['overdue_count'] ?> overdue
+-                                <?php endif; ?>
+-                            </p>
+-                        <?php endif; ?>
+-                        <a href="dashboard.php?page=bills" class="mt-3 inline-block text-sm font-semibold text-paleco-700 hover:text-paleco-800">View unpaid bills →</a>
+-                    </article>
+-
+-
+-
+-
+-                    <!-- Latest bill -->
+-
+-                    <article
+-                        class="
+-                            rounded-2xl
+-                            border border-slate-200
+-                            bg-white
+-                            p-5
+-                            shadow-card
+-                        "
+-                    >
+-
+-                        <p
+-                            class="
+-                                text-xs
+-                                font-bold
+-                                uppercase
+-                                tracking-[.12em]
+-                                text-slate-400
+-                            "
+-                        >
+-                            Latest Bill
+-                        </p>
+-
+-
+-                        <?php if ($latestBill): ?>
+-
+-                            <h3
+-                                class="
+-                                    mt-4
+-                                    text-2xl
+-                                    font-bold
+-                                "
+-                            >
+-                                ₱<?= number_format(
+-                                    (float) $latestBill['TotalBill'],
+-                                    2
+-                                ) ?>
+-                            </h3>
+-
+-                            <p
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    text-slate-500
+-                                "
+-                            >
+-                                <?= dashboardEscape(
+-                                    formatBillMonth(
+-                                        $latestBill['BillMonth']
+-                                    )
+-                                ) ?>
+-                            </p>
+-
+-                        <?php else: ?>
+-
+-                            <h3
+-                                class="
+-                                    mt-4
+-                                    text-2xl
+-                                    font-bold
+-                                "
+-                            >
+-                                —
+-                            </h3>
+-
+-                            <p
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    text-slate-500
+-                                "
+-                            >
+-                                No billing history available.
+-                            </p>
+-
+-                        <?php endif; ?>
+-
+-                    </article>
+-
+-
+-                    <!-- Latest consumption -->
+-
+-                    <article
+-                        class="
+-                            rounded-2xl
+-                            border border-slate-200
+-                            bg-white
+-                            p-5
+-                            shadow-card
+-                        "
+-                    >
+-
+-                        <p
+-                            class="
+-                                text-xs
+-                                font-bold
+-                                uppercase
+-                                tracking-[.12em]
+-                                text-slate-400
+-                            "
+-                        >
+-                            Latest Consumption
+-                        </p>
+-
+-
+-                        <?php if ($latestBill): ?>
+-
+-                            <h3
+-                                class="
+-                                    mt-4
+-                                    text-2xl
+-                                    font-bold
+-                                "
+-                            >
+-                                <?= number_format(
+-                                    (float) $latestBill['KWH'],
+-                                    0
+-                                ) ?>
+-
+-                                <span
+-                                    class="
+-                                        text-sm
+-                                        font-medium
+-                                        text-slate-400
+-                                    "
+-                                >
+-                                    kWh
+-                                </span>
+-                            </h3>
+-
+-                            <p
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    text-slate-500
+-                                "
+-                            >
+-                                <?= dashboardEscape(
+-                                    formatBillMonth(
+-                                        $latestBill['BillMonth']
+-                                    )
+-                                ) ?>
+-                            </p>
+-
+-                        <?php else: ?>
+-
+-                            <h3
+-                                class="
+-                                    mt-4
+-                                    text-2xl
+-                                    font-bold
+-                                "
+-                            >
+-                                —
+-                            </h3>
+-
+-                            <p
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    text-slate-500
+-                                "
+-                            >
+-                                No consumption history available.
+-                            </p>
+-
+-                        <?php endif; ?>
+-
+-                    </article>
+-
+-                </div>
+-
+-
+-                <!-- =================================================
+-                     CONSUMPTION
+-                     ================================================= -->
+-
+-                <?php if (
+-                    $page === 'dashboard'
+-                ): ?>
+-
+-                    <section
+-                        class="
+-                            rounded-2xl
+-                            border border-slate-200
+-                            bg-white
+-                            p-5
+-                            shadow-card
+-                            sm:p-6
+-                        "
+-                    >
+-
+-                        <p
+-                            class="
+-                                text-xs
+-                                font-bold
+-                                uppercase
+-                                tracking-[.14em]
+-                                text-paleco-700
+-                            "
+-                        >
+-                            12-Month Consumption
+-                        </p>
+-
+-                        <h2
+-                            class="
+-                                mt-1
+-                                text-lg
+-                                font-bold
+-                            "
+-                        >
+-                            Electricity use
+-                        </h2>
+-
+-
+-                        <?php if ($consumptionHistory): ?>
+-
+-                            <div
+-                                class="
+-                                    mt-6
+-                                    h-72
+-                                    sm:h-80
+-                                "
+-                            >
+-                                <canvas id="consumptionChart"></canvas>
+-                            </div>
+-
+-                        <?php else: ?>
+-
+-                            <div
+-                                class="
+-                                    mt-5
+-                                    rounded-xl
+-                                    border
+-                                    border-dashed
+-                                    border-slate-300
+-                                    bg-slate-50
+-                                    px-5 py-10
+-                                    text-center
+-                                    text-sm
+-                                    text-slate-500
+-                                "
+-                            >
+-                                No consumption history available.
+-                            </div>
+-
+-                        <?php endif; ?>
+-
+-                    </section>
+-
+-                <?php endif; ?>
+-
+-
+-                <!-- =================================================
+-                     BILL HISTORY
+-                     ================================================= -->
+-
+-                <?php if (
+-                    $page === 'dashboard'
+-                    || ($page === 'bills' && $billsTab === 'history')
+-                ): ?>
+-
+-                    <section
+-                        class="
+-                            overflow-hidden
+-                            rounded-2xl
+-                            border border-slate-200
+-                            bg-white
+-                            shadow-card
+-                        "
+-                    >
+-
+-                        <div
+-                            class="
+-                                border-b
+-                                border-slate-100
+-                                p-5
+-                                sm:p-6
+-                            "
+-                        >
+-
+-                            <p
+-                                class="
+-                                    text-xs
+-                                    font-bold
+-                                    uppercase
+-                                    tracking-[.14em]
+-                                    text-paleco-700
+-                                "
+-                            >
+-                                Billing History
+-                            </p>
+-
+-                            <h2
+-                                class="
+-                                    mt-1
+-                                    text-lg
+-                                    font-bold
+-                                "
+-                            >
+-                                Recent bills
+-                            </h2>
+-
+-                        </div>
+-
+-
+-                        <?php if ($billHistory): ?>
+-
+-                            <div class="overflow-x-auto">
+-
+-                                <table
+-                                    class="
+-                                        min-w-full
+-                                        divide-y
+-                                        divide-slate-200
+-                                        text-sm
+-                                    "
+-                                >
+-
+-                                    <thead class="bg-slate-50">
+-
+-                                    <tr
+-                                        class="
+-                                            text-left
+-                                            text-xs
+-                                            font-semibold
+-                                            uppercase
+-                                            tracking-wide
+-                                            text-slate-500
+-                                        "
+-                                    >
+-
+-                                        <th class="px-5 py-3">
+-                                            Bill Month
+-                                        </th>
+-
+-                                        <th class="px-5 py-3">
+-                                            Bill No.
+-                                        </th>
+-
+-                                        <th class="px-5 py-3">
+-                                            Reading Date
+-                                        </th>
+-
+-                                        <th class="px-5 py-3 text-right">
+-                                            Previous
+-                                        </th>
+-
+-                                        <th class="px-5 py-3 text-right">
+-                                            Present
+-                                        </th>
+-
+-                                        <th class="px-5 py-3 text-right">
+-                                            kWh
+-                                        </th>
+-
+-                                        <th class="px-5 py-3">
+-                                            Due Date
+-                                        </th>
+-
+-                                        <th class="px-5 py-3 text-right">
+-                                            Total Bill
+-                                        </th>
+-
+-                                    </tr>
+-
+-                                    </thead>
+-
+-
+-                                    <tbody
+-                                        class="
+-                                            divide-y
+-                                            divide-slate-100
+-                                            bg-white
+-                                        "
+-                                    >
+-
+-                                    <?php foreach ($billHistory as $bill): ?>
+-
+-                                        <tr class="hover:bg-slate-50">
+-
+-                                            <td
+-                                                class="
+-                                                    whitespace-nowrap
+-                                                    px-5 py-4
+-                                                    font-semibold
+-                                                "
+-                                            >
+-                                                <?= dashboardEscape(
+-                                                    formatBillMonth(
+-                                                        $bill['BillMonth']
+-                                                    )
+-                                                ) ?>
+-                                            </td>
+-
+-
+-                                            <td
+-                                                class="
+-                                                    whitespace-nowrap
+-                                                    px-5 py-4
+-                                                    text-slate-600
+-                                                "
+-                                            >
+-                                                <?= dashboardEscape(
+-                                                    (string) $bill['BillNo']
+-                                                ) ?>
+-                                            </td>
+-
+-
+-                                            <td
+-                                                class="
+-                                                    whitespace-nowrap
+-                                                    px-5 py-4
+-                                                    text-slate-600
+-                                                "
+-                                            >
+-                                                <?= dashboardEscape(
+-                                                    formatPortalDate(
+-                                                        $bill['ReadingDate']
+-                                                    )
+-                                                ) ?>
+-                                            </td>
+-
+-
+-                                            <td
+-                                                class="
+-                                                    whitespace-nowrap
+-                                                    px-5 py-4
+-                                                    text-right
+-                                                    text-slate-600
+-                                                "
+-                                            >
+-                                                <?= number_format(
+-                                                    (float) $bill['PrvRdngKWH'],
+-                                                    0
+-                                                ) ?>
+-                                            </td>
+-
+-
+-                                            <td
+-                                                class="
+-                                                    whitespace-nowrap
+-                                                    px-5 py-4
+-                                                    text-right
+-                                                    text-slate-600
+-                                                "
+-                                            >
+-                                                <?= number_format(
+-                                                    (float) $bill['PrsRdngKWH'],
+-                                                    0
+-                                                ) ?>
+-                                            </td>
+-
+-
+-                                            <td
+-                                                class="
+-                                                    whitespace-nowrap
+-                                                    px-5 py-4
+-                                                    text-right
+-                                                    font-semibold
+-                                                "
+-                                            >
+-                                                <?= number_format(
+-                                                    (float) $bill['KWH'],
+-                                                    0
+-                                                ) ?>
+-                                            </td>
+-
+-
+-                                            <td
+-                                                class="
+-                                                    whitespace-nowrap
+-                                                    px-5 py-4
+-                                                    text-slate-600
+-                                                "
+-                                            >
+-                                                <?= dashboardEscape(
+-                                                    formatPortalDate(
+-                                                        $bill['DueDate']
+-                                                    )
+-                                                ) ?>
+-                                            </td>
+-
+-
+-                                            <td
+-                                                class="
+-                                                    whitespace-nowrap
+-                                                    px-5 py-4
+-                                                    text-right
+-                                                    font-semibold
+-                                                "
+-                                            >
+-                                                ₱<?= number_format(
+-                                                    (float) $bill['TotalBill'],
+-                                                    2
+-                                                ) ?>
+-                                            </td>
+-
+-                                        </tr>
+-
+-                                    <?php endforeach; ?>
+-
+-                                    </tbody>
+-
+-                                </table>
+-
+-                            </div>
+-
+-                        <?php else: ?>
+-
+-                            <div
+-                                class="
+-                                    px-6 py-12
+-                                    text-center
+-                                    text-sm
+-                                    text-slate-500
+-                                "
+-                            >
+-                                No billing history available.
+-                            </div>
+-
+-                        <?php endif; ?>
+-
+-                    </section>
+-
+-                <?php endif; ?>
+-
+-
+-                <!-- =================================================
+-                     MY BILLS
+-                     ================================================= -->
+-
+-                <?php if ($page === 'bills' && $billsTab === 'unpaid'): ?>
+-
+-                    <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
+-                        <div class="border-b border-slate-100 p-5 sm:p-6">
+-                            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+-                                <div>
+-                                    <p class="text-xs font-bold uppercase tracking-[.14em] text-paleco-700">Outstanding Bills</p>
+-                                    <h2 class="mt-1 text-lg font-bold">Current balance</h2>
+-                                    <p class="mt-1 text-sm text-slate-500">
+-                                        <?= dashboardEscape(formatConsumerAccountCode($selectedAccount)) ?>
+-                                    </p>
+-                                </div>
+-                                <a href="dashboard.php?page=account-settings" class="text-sm font-semibold text-paleco-700 hover:text-paleco-800">
+-                                    Switch account →
+-                                </a>
+-                            </div>
+-
+-                            <?php if ($isDevelopmentMode): ?>
+-                                <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200" role="note">
+-                                    Development data — billing balances may not reflect current PALECO records.
+-                                </div>
+-                            <?php endif; ?>
+-
+-                            <?php if (!$unpaidBillsError): ?>
+-                                <div class="mt-5 grid gap-3 sm:grid-cols-3">
+-                                    <div class="rounded-xl bg-slate-50 p-4">
+-                                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total amount due</p>
+-                                        <p class="mt-1 text-2xl font-bold">₱<?= number_format((float) $unpaidBillSummary['total_due'], 2) ?></p>
+-                                    </div>
+-                                    <div class="rounded-xl bg-slate-50 p-4">
+-                                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Unpaid bills</p>
+-                                        <p class="mt-1 text-2xl font-bold"><?= (int) $unpaidBillSummary['unpaid_count'] ?></p>
+-                                    </div>
+-                                    <div class="rounded-xl bg-slate-50 p-4">
+-                                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Overdue</p>
+-                                        <p class="mt-1 text-2xl font-bold <?= $unpaidBillSummary['overdue_count'] ? 'text-red-600 dark:text-red-400' : '' ?>">
+-                                            <?= (int) $unpaidBillSummary['overdue_count'] ?>
+-                                        </p>
+-                                    </div>
+-                                </div>
+-                            <?php endif; ?>
+-                        </div>
+-
+-                        <?php if ($unpaidBillsError): ?>
+-                            <div class="px-6 py-12 text-center text-sm text-slate-500">
+-                                We could not load your outstanding bills right now. Please try again later.
+-                            </div>
+-                        <?php elseif ($unpaidBills): ?>
+-                            <div class="overflow-x-auto">
+-                                <table class="min-w-full divide-y divide-slate-200 text-sm">
+-                                    <thead class="bg-slate-50">
+-                                        <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+-                                            <th class="px-5 py-3">Bill month</th>
+-                                            <th class="px-5 py-3">Due date</th>
+-                                            <th class="px-5 py-3 text-right">Outstanding</th>
+-                                            <th class="px-5 py-3 text-right">Surcharge</th>
+-                                            <th class="px-5 py-3 text-right">Total amount</th>
+-                                            <th class="px-5 py-3">Status</th>
+-                                        </tr>
+-                                    </thead>
+-                                    <tbody class="divide-y divide-slate-100 bg-white">
+-                                        <?php foreach ($unpaidBills as $bill): ?>
+-                                            <tr class="hover:bg-slate-50">
+-                                                <td class="whitespace-nowrap px-5 py-4 font-semibold">
+-                                                    <?= dashboardEscape(formatBillMonth($bill['bill_month'])) ?>
+-                                                </td>
+-                                                <td class="whitespace-nowrap px-5 py-4 text-slate-600">
+-                                                    <?= dashboardEscape(formatPortalDate($bill['due_date'])) ?>
+-                                                </td>
+-                                                <td class="whitespace-nowrap px-5 py-4 text-right text-slate-600">
+-                                                    ₱<?= number_format((float) $bill['outstanding_balance'], 2) ?>
+-                                                </td>
+-                                                <td class="whitespace-nowrap px-5 py-4 text-right text-slate-600">
+-                                                    ₱<?= number_format((float) $bill['surcharge'], 2) ?>
+-                                                </td>
+-                                                <td class="whitespace-nowrap px-5 py-4 text-right font-bold">
+-                                                    ₱<?= number_format((float) $bill['total_due'], 2) ?>
+-                                                </td>
+-                                                <td class="whitespace-nowrap px-5 py-4">
+-                                                    <?php $billStatus = unpaidBillStatus($bill['due_date']); ?>
+-                                                    <span class="rounded-full px-2.5 py-1 text-xs font-bold <?= dashboardEscape($billStatus['class']) ?>">
+-                                                        <?= dashboardEscape($billStatus['label']) ?>
+-                                                    </span>
+-                                                </td>
+-                                            </tr>
+-                                        <?php endforeach; ?>
+-                                    </tbody>
+-                                </table>
+-                            </div>
+-                        <?php else: ?>
+-                            <div class="px-6 py-12 text-center">
+-                                <h3 class="text-base font-semibold">No Unpaid Bills</h3>
+-                                <p class="mt-2 text-sm text-slate-500">
+-                                    You currently have no outstanding bills for this account.
+-                                </p>
+-                                <p class="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
+-                                    Total Outstanding Balance: ₱0.00
+-                                </p>
+-                            </div>
+-                        <?php endif; ?>
+-                    </section>
+-
+-                <?php endif; ?>
+-
+-
+-
+-
+-                <!-- =================================================
+-                     SERVICE DETAILS
+-                     ================================================= -->
+-
+-                <section
+-                    class="
+-                        rounded-2xl
+-                        border border-slate-200
+-                        bg-white
+-                        p-5
+-                        shadow-card
+-                        sm:p-6
+-                    "
+-                >
+-
+-                    <p
+-                        class="
+-                            text-xs
+-                            font-bold
+-                            uppercase
+-                            tracking-[.14em]
+-                            text-paleco-700
+-                        "
+-                    >
+-                        Service Details
+-                    </p>
+-
+-                    <h2
+-                        class="
+-                            mt-1
+-                            text-lg
+-                            font-bold
+-                        "
+-                    >
+-                        Account information
+-                    </h2>
+-
+-
+-                    <dl
+-                        class="
+-                            mt-5
+-                            grid
+-                            gap-x-8
+-                            gap-y-5
+-                            sm:grid-cols-2
+-                            xl:grid-cols-3
+-                        "
+-                    >
+-
+-                        <div>
+-
+-                            <dt
+-                                class="
+-                                    text-xs
+-                                    font-medium
+-                                    text-slate-400
+-                                "
+-                            >
+-                                Account Code
+-                            </dt>
+-
+-                            <dd
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    font-semibold
+-                                "
+-                            >
+-                                <?= dashboardEscape(
+-                                    formatConsumerAccountCode($selectedAccount)
+-                                ) ?>
+-                            </dd>
+-
+-                        </div>
+-
+-
+-                        <div>
+-
+-                            <dt
+-                                class="
+-                                    text-xs
+-                                    font-medium
+-                                    text-slate-400
+-                                "
+-                            >
+-                                Account Holder
+-                            </dt>
+-
+-                            <dd
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    font-semibold
+-                                "
+-                            >
+-                                <?= dashboardEscape(
+-                                    $selectedAccount['Name']
+-                                    ?: 'Unavailable'
+-                                ) ?>
+-                            </dd>
+-
+-                        </div>
+-
+-
+-                        <div>
+-
+-                            <dt
+-                                class="
+-                                    text-xs
+-                                    font-medium
+-                                    text-slate-400
+-                                "
+-                            >
+-                                Meter Number
+-                            </dt>
+-
+-                            <dd
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    font-semibold
+-                                "
+-                            >
+-                                <?= dashboardEscape(
+-                                    $selectedAccount['MeterSerial']
+-                                    ?: 'Unavailable'
+-                                ) ?>
+-                            </dd>
+-
+-                        </div>
+-
+-
+-                        <div>
+-
+-                            <dt
+-                                class="
+-                                    text-xs
+-                                    font-medium
+-                                    text-slate-400
+-                                "
+-                            >
+-                                Status
+-                            </dt>
+-
+-                            <dd
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    font-semibold
+-                                "
+-                            >
+-                                <?= dashboardEscape(
+-                                    $selectedAccount['Status']
+-                                    ?: 'Unavailable'
+-                                ) ?>
+-                            </dd>
+-
+-                        </div>
+-
+-
+-                        <div class="sm:col-span-2">
+-
+-                            <dt
+-                                class="
+-                                    text-xs
+-                                    font-medium
+-                                    text-slate-400
+-                                "
+-                            >
+-                                Service Address
+-                            </dt>
+-
+-                            <dd
+-                                class="
+-                                    mt-1
+-                                    text-sm
+-                                    font-semibold
+-                                "
+-                            >
+-                                <?= dashboardEscape(
+-                                    $selectedAccount['Address']
+-                                    ?: 'Unavailable'
+-                                ) ?>
+-                            </dd>
+-
+-                        </div>
+-
+-                    </dl>
+-
+-                </section>
+-
+-
+-            <?php endif; ?>
+-
+-
+-            <!-- Footer -->
+-
+-            <footer
+-                class="
+-                    border-t
+-                    border-slate-200
+-                    pt-5
+-                    text-center
+-                    text-xs
+-                    text-slate-400
+-                "
+-            >
+-                PALECO MCO Portal ·
+-                Local XAMPP Development Environment
+-            </footer>
+-
+-        </div>
+-
+-    </main>
+-
+-</div>
+-
+-
+-<!-- =========================================================
+-     JAVASCRIPT
+-     ========================================================= -->
+-
+-<script src="assets/js/theme.js"></script>
+-
+-<script>
+-
+-(function () {
+-
+-    const sidebar =
+-        document.getElementById('sidebar');
+-
+-    const backdrop =
+-        document.getElementById('mobileBackdrop');
+-
+-    const openButton =
+-        document.getElementById('openSidebar');
+-
+-    const closeButton =
+-        document.getElementById('closeSidebar');
+-
+-
+-    function openSidebar() {
+-
+-        if (!sidebar || !backdrop) {
+-            return;
+-        }
+-
+-        sidebar.classList.remove(
+-            '-translate-x-full'
+-        );
+-
+-        backdrop.classList.remove(
+-            'hidden'
+-        );
+-
+-        document.body.classList.add(
+-            'overflow-hidden'
+-        );
+-    }
+-
+-
+-    function closeSidebar() {
+-
+-        if (!sidebar || !backdrop) {
+-            return;
+-        }
+-
+-        sidebar.classList.add(
+-            '-translate-x-full'
+-        );
+-
+-        backdrop.classList.add(
+-            'hidden'
+-        );
+-
+-        document.body.classList.remove(
+-            'overflow-hidden'
+-        );
+-    }
+-
+-
+-    if (openButton) {
+-
+-        openButton.addEventListener(
+-            'click',
+-            openSidebar
+-        );
+-    }
+-
+-
+-    if (closeButton) {
+-
+-        closeButton.addEventListener(
+-            'click',
+-            closeSidebar
+-        );
+-    }
+-
+-
+-    if (backdrop) {
+-
+-        backdrop.addEventListener(
+-            'click',
+-            closeSidebar
+-        );
+-    }
+-
+-
+-    document.addEventListener(
+-        'keydown',
+-        function (event) {
+-
+-            if (event.key === 'Escape') {
+-                closeSidebar();
+-            }
+-
+-        }
+-    );
+-
+-
+-    window.addEventListener(
+-        'resize',
+-        function () {
+-
+-            if (window.innerWidth >= 1024) {
+-
+-                document.body.classList.remove(
+-                    'overflow-hidden'
+-                );
+-
+-                if (backdrop) {
+-
+-                    backdrop.classList.add(
+-                        'hidden'
+-                    );
+-                }
+-            }
+-
+-        }
+-    );
+-
+-})();
+-
+-
+-<?php if (
++    <script src="assets/js/portal-shell.js"></script>`r`n`r`n<?php if (
+     $consumptionHistory
+     && (
+         $page === 'dashboard'

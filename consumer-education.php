@@ -70,59 +70,30 @@ $navigation = [
             }
         };
     </script>
+    <link rel="stylesheet" href="assets/css/portal-shell.css">
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('mco.sidebar.collapsed') === 'true') {
+                    document.documentElement.classList.add('sidebar-collapsed');
+                }
+            } catch (error) {}
+        })();
+    </script>
 </head>
 <body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
-<div class="min-h-screen lg:flex">
-    <div id="mobileBackdrop" class="fixed inset-0 z-40 hidden bg-slate-950/40 backdrop-blur-sm lg:hidden"></div>
-
-    <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 flex w-72 -translate-x-full flex-col border-r border-slate-200 bg-white transition-transform duration-200 dark:border-slate-800 dark:bg-slate-900 lg:static lg:translate-x-0">
-        <div class="flex h-20 items-center gap-3 border-b border-slate-100 px-6 dark:border-slate-800">
-            <div class="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl ring-1 ring-slate-200 dark:ring-slate-700">
-                <img src="assets/images/logo.png" alt="PALECO" class="h-9 w-9 object-contain">
-            </div>
-            <div>
-                <div class="text-sm font-bold tracking-wide">PALECO</div>
-                <div class="text-xs font-medium text-slate-500">MCO Portal</div>
-            </div>
-            <button type="button" id="closeSidebar" class="ml-auto rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 lg:hidden" aria-label="Close navigation">×</button>
-        </div>
-
-        <nav class="flex-1 space-y-1 overflow-y-auto px-4 py-6" aria-label="Main navigation">
-            <?php foreach ($navigation as $item): ?>
-                <?php $active = $item['href'] === 'consumer-education.php'; ?>
-                <a
-                    href="<?= educationEscape($item['href']) ?>"
-                    class="flex items-center rounded-xl px-4 py-3 text-sm font-medium transition <?= $active ? 'bg-paleco-50 text-paleco-800 dark:bg-paleco-900 dark:text-paleco-100' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white' ?>"
-                    <?= $active ? 'aria-current="page"' : '' ?>
-                >
-                    <?= educationEscape($item['label']) ?>
-                </a>
-            <?php endforeach; ?>
-        </nav>
-
-        <div class="border-t border-slate-100 p-4 dark:border-slate-800">
-            <div class="mb-3 rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/50">
-                <div class="truncate text-sm font-semibold"><?= educationEscape($userDisplayName) ?></div>
-                <?php if ($userEmail !== ''): ?>
-                    <div class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400"><?= educationEscape($userEmail) ?></div>
-                <?php endif; ?>
-            </div>
-            <a href="logout.php" class="flex w-full justify-center rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Sign Out</a>
-        </div>
-    </aside>
-
-    <main class="min-w-0 flex-1">
-        <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-            <div class="mx-auto flex h-20 max-w-screen-2xl items-center gap-4 px-4 sm:px-6 lg:px-8">
-                <button type="button" id="openSidebar" class="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 lg:hidden" aria-label="Open navigation">☰</button>
-                <button id="themeToggle" type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" aria-label="Switch to dark mode" title="Switch to dark mode"></button>
-                <div class="min-w-0 flex-1">
-                    <p class="hidden text-xs font-semibold uppercase tracking-[.14em] text-slate-400 sm:block">Palawan Electric Cooperative</p>
-                    <h1 class="truncate text-xl font-bold tracking-tight">Consumer Education</h1>
-                </div>
-                <div class="hidden rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 sm:block"><?= educationEscape($userDisplayName) ?></div>
-            </div>
-        </header>
+<div class="min-h-screen">
+    <?php
+    $portalActivePage = 'consumer-education';
+    $portalUserDisplayName = $userDisplayName;
+    $portalUserEmail = $userEmail;
+    require __DIR__ . '/includes/portal-sidebar.php';
+    ?>
+    <main class="portal-main">
+        <?php
+        $portalPageTitle = 'Consumer Education';
+        require __DIR__ . '/includes/portal-header.php';
+        ?>
 
         <div class="mx-auto max-w-screen-xl space-y-6 p-4 sm:p-6 lg:p-8">
             <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6">
@@ -223,12 +194,9 @@ $navigation = [
 </div>
 
 <script src="assets/js/theme.js"></script>
+<script src="assets/js/portal-shell.js"></script>
 <script>
 (function () {
-    const sidebar = document.getElementById('sidebar');
-    const backdrop = document.getElementById('mobileBackdrop');
-    const openButton = document.getElementById('openSidebar');
-    const closeButton = document.getElementById('closeSidebar');
     const loadButton = document.getElementById('loadVideos');
     const player = document.getElementById('videoPlayer');
     const videoButtons = Array.from(document.querySelectorAll('.education-video'));
@@ -241,29 +209,6 @@ $navigation = [
     const videosPerPage = Number(videoGrid?.dataset.videosPerPage) || 6;
     const totalVideoPages = Math.ceil(videoButtons.length / videosPerPage);
     let currentVideoPage = 1;
-
-    function openSidebar() {
-        sidebar?.classList.remove('-translate-x-full');
-        backdrop?.classList.remove('hidden');
-        document.body.classList.add('overflow-hidden');
-    }
-
-    function closeSidebar() {
-        sidebar?.classList.add('-translate-x-full');
-        backdrop?.classList.add('hidden');
-        document.body.classList.remove('overflow-hidden');
-    }
-
-    openButton?.addEventListener('click', openSidebar);
-    closeButton?.addEventListener('click', closeSidebar);
-    backdrop?.addEventListener('click', closeSidebar);
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') closeSidebar();
-    });
-    window.addEventListener('resize', () => {
-        if (window.innerWidth >= 1024) closeSidebar();
-    });
-
     function renderVideoPagination() {
         if (!videoGrid || !videoRange) return;
 
