@@ -25,6 +25,17 @@ if (!str_contains($html, 'Add PALECO Account') || !str_contains($html, 'csrf_tok
 }
 
 $accounts = dashboardLinkedAccounts($pdo, (int) $userId);
+if ($accounts) {
+    $accountCode = trim((string) ($accounts[0]['AcctCode'] ?? ''));
+    $expectedDisplay = $accountCode !== ''
+        ? 'Account ' . htmlspecialchars($accountCode, ENT_QUOTES, 'UTF-8')
+        : 'Account code unavailable';
+
+    if (!str_contains($html, $expectedDisplay)) {
+        throw new RuntimeException('Consumer-facing account code was not rendered safely.');
+    }
+}
+
 $_SESSION['SelectedAcctNo'] = 'not-authorized';
 if ($accounts) {
     $selected = dashboardSelectedAccount($accounts);

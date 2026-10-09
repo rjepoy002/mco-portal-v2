@@ -204,6 +204,14 @@ function unpaidBillStatus(?string $dueDate): array
     ];
 }
 
+function formatConsumerAccountCode(array $account): string
+{
+    $accountCode = trim((string) ($account['AcctCode'] ?? ''));
+
+    return $accountCode !== ''
+        ? 'Account ' . $accountCode
+        : 'Account code unavailable';
+}
 /* =========================================================
    LEGACY EBILLS SYNCHRONIZATION
 
@@ -466,24 +474,32 @@ syncLegacyEbillsAccounts(
    ========================================================= */
 
 $nav = [
-    'dashboard'    => 'Dashboard',
-    'bills'        => 'My Bills',
-    'bill-history' => 'Bill History',
-    'consumption'  => 'Consumption',
-    'accounts'     => 'My Accounts',
-    'profile'      => 'Profile / Settings',
+    'dashboard'        => 'Dashboard',
+    'bills'            => 'My Bills',
+    'account-settings' => 'Account & Settings',
+];
+
+/* Keep legacy bookmarks functional without retaining redundant navigation. */
+$legacyPageRoutes = [
+    'bill-history' => ['page' => 'bills', 'tab' => 'history'],
+    'consumption'  => ['page' => 'dashboard'],
+    'accounts'     => ['page' => 'account-settings'],
+    'profile'      => ['page' => 'account-settings'],
 ];
 
 $requestedPage = $_GET['page'] ?? 'dashboard';
+$legacyRoute = is_string($requestedPage)
+    ? ($legacyPageRoutes[$requestedPage] ?? null)
+    : null;
 
-$page = (
+$page = $legacyRoute['page'] ?? (
     is_string($requestedPage)
     && array_key_exists($requestedPage, $nav)
-)
-    ? $requestedPage
-    : 'dashboard';
+        ? $requestedPage
+        : 'dashboard'
+);
 
-$requestedBillsTab = $_GET['tab'] ?? 'unpaid';
+$requestedBillsTab = $legacyRoute['tab'] ?? ($_GET['tab'] ?? 'unpaid');
 $billsTab = (
     $page === 'bills'
     && is_string($requestedBillsTab)
@@ -509,7 +525,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = (string) ($_POST['action'] ?? '');
 
-    $returnPage = 'accounts';
+    $returnPage = 'account-settings';
 
     if ($action === 'switch') {
         $requestedReturnPage = (string) ($_POST['return_page'] ?? 'dashboard');
@@ -614,7 +630,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ) {
 
                 dashboardReturn(
-                    'accounts',
+                    'account-settings',
                     'Enter a valid account number and meter number.',
                     'error'
                 );
@@ -651,7 +667,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$verifiedAccount) {
 
                 dashboardReturn(
-                    'accounts',
+                    'account-settings',
                     'The account and meter number could not be verified.',
                     'error'
                 );
@@ -708,7 +724,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
 
                 dashboardReturn(
-                    'accounts',
+                    'account-settings',
                     'This account is already linked.',
                     'error'
                 );
@@ -802,7 +818,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
             dashboardReturn(
-                'accounts',
+                'account-settings',
                 'PALECO account linked successfully.'
             );
         }
@@ -821,7 +837,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (mb_strlen($label) > 100) {
 
                 dashboardReturn(
-                    'accounts',
+                    'account-settings',
                     'The label must be 100 characters or fewer.',
                     'error'
                 );
@@ -849,7 +865,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$check->fetch()) {
 
                 dashboardReturn(
-                    'accounts',
+                    'account-settings',
                     'That account is not linked to your profile.',
                     'error'
                 );
@@ -876,7 +892,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
             dashboardReturn(
-                'accounts',
+                'account-settings',
                 'Account label saved.'
             );
         }
@@ -925,7 +941,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
 
                 dashboardReturn(
-                    'accounts',
+                    'account-settings',
                     'That account is not linked to your profile.',
                     'error'
                 );
@@ -968,7 +984,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
             dashboardReturn(
-                'accounts',
+                'account-settings',
                 'Primary account updated.'
             );
         }
@@ -1147,11 +1163,11 @@ if ($selectedAccount) {
 
 if (
     !$selectedAccount
-    && $page !== 'accounts'
+    && $page !== 'account-settings'
 ) {
 
     header(
-        'Location: dashboard.php?page=accounts'
+        'Location: dashboard.php?page=account-settings'
     );
 
     exit;
@@ -1528,6 +1544,26 @@ $csrf = dashboardCsrfToken();
 
             <?php endforeach; ?>
 
+            <a
+                href="consumer-education.php"
+                class="
+                    flex items-center
+                    rounded-xl
+                    px-4 py-3
+                    text-sm
+                    font-medium
+                    text-slate-600
+                    transition
+                    hover:bg-slate-100
+                    hover:text-slate-900
+                    dark:text-slate-400
+                    dark:hover:bg-slate-800
+                    dark:hover:text-white
+                "
+            >
+                Consumer Education
+            </a>
+
         </nav>
 
 
@@ -1862,9 +1898,8 @@ $csrf = dashboardCsrfToken();
                                     text-slate-500
                                 "
                             >
-                                Account
                                 <?= dashboardEscape(
-                                    $selectedAccount['AcctNo']
+                                    formatConsumerAccountCode($selectedAccount)
                                 ) ?>
                             </p>
 
@@ -1957,7 +1992,7 @@ $csrf = dashboardCsrfToken();
                                                         )
                                                     )
                                                     . ' · '
-                                                    . $account['AcctNo']
+                                                    . formatConsumerAccountCode($account)
                                                 ) ?>
                                                 <?= $account['is_primary']
                                                     ? ' (Primary)'
@@ -2002,7 +2037,7 @@ $csrf = dashboardCsrfToken();
                  MY ACCOUNTS
                  ================================================= -->
 
-            <?php if ($page === 'accounts'): ?>
+            <?php if ($page === 'account-settings'): ?>
 
                 <section>
 
@@ -2015,7 +2050,7 @@ $csrf = dashboardCsrfToken();
                             text-paleco-700
                         "
                     >
-                        Service Accounts
+                        Linked Accounts
                     </p>
 
                     <h2
@@ -2119,9 +2154,8 @@ $csrf = dashboardCsrfToken();
                                             text-slate-400
                                         "
                                     >
-                                        Account
                                         <?= dashboardEscape(
-                                            $account['AcctNo']
+                                            formatConsumerAccountCode($account)
                                         ) ?>
                                     </p>
 
@@ -2592,7 +2626,9 @@ $csrf = dashboardCsrfToken();
                  PROFILE
                  ================================================= -->
 
-            <?php elseif ($page === 'profile'): ?>
+            <!-- =================================================
+                 MY PROFILE
+                 ================================================= -->
 
                 <section
                     class="
@@ -2614,7 +2650,7 @@ $csrf = dashboardCsrfToken();
                             text-paleco-700
                         "
                     >
-                        Portal Profile
+                        My Profile
                     </p>
 
                     <h2
@@ -2639,9 +2675,25 @@ $csrf = dashboardCsrfToken();
 
                 </section>
 
+                <section class="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+                    <p class="text-xs font-bold uppercase tracking-[.14em] text-paleco-700">Security &amp; Preferences</p>
+                    <h2 class="mt-2 text-xl font-bold">Password and appearance</h2>
+                    <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                        <div class="rounded-xl bg-slate-50 p-4">
+                            <h3 class="font-semibold">Password</h3>
+                            <p class="mt-1 text-sm text-slate-500">Request a secure password-reset link for your portal account.</p>
+                            <a href="forgot-password.php" class="mt-3 inline-block text-sm font-semibold text-paleco-700 hover:text-paleco-800">Reset password →</a>
+                        </div>
+                        <div class="rounded-xl bg-slate-50 p-4">
+                            <h3 class="font-semibold">Appearance</h3>
+                            <p class="mt-1 text-sm text-slate-500">Use the theme button in the page header to switch between light and dark mode.</p>
+                        </div>
+                    </div>
+                </section>
+
 
             <!-- =================================================
-                 DASHBOARD / BILLS / HISTORY / CONSUMPTION
+                 DASHBOARD / BILLS / HISTORY
                  ================================================= -->
 
             <?php else: ?>
@@ -2704,7 +2756,7 @@ $csrf = dashboardCsrfToken();
 
 
                     <a
-                        href="dashboard.php?page=accounts"
+                        href="dashboard.php?page=account-settings"
                         class="
                             text-sm
                             font-semibold
@@ -2958,7 +3010,6 @@ $csrf = dashboardCsrfToken();
 
                 <?php if (
                     $page === 'dashboard'
-                    || $page === 'consumption'
                 ): ?>
 
                     <section
@@ -3039,7 +3090,6 @@ $csrf = dashboardCsrfToken();
 
                 <?php if (
                     $page === 'dashboard'
-                    || $page === 'bill-history'
                     || ($page === 'bills' && $billsTab === 'history')
                 ): ?>
 
@@ -3322,10 +3372,10 @@ $csrf = dashboardCsrfToken();
                                     <p class="text-xs font-bold uppercase tracking-[.14em] text-paleco-700">Outstanding Bills</p>
                                     <h2 class="mt-1 text-lg font-bold">Current balance</h2>
                                     <p class="mt-1 text-sm text-slate-500">
-                                        Account <?= dashboardEscape($selectedAccount['AcctNo']) ?>
+                                        <?= dashboardEscape(formatConsumerAccountCode($selectedAccount)) ?>
                                     </p>
                                 </div>
-                                <a href="dashboard.php?page=accounts" class="text-sm font-semibold text-paleco-700 hover:text-paleco-800">
+                                <a href="dashboard.php?page=account-settings" class="text-sm font-semibold text-paleco-700 hover:text-paleco-800">
                                     Switch account →
                                 </a>
                             </div>
@@ -3478,7 +3528,7 @@ $csrf = dashboardCsrfToken();
                                     text-slate-400
                                 "
                             >
-                                Account Number
+                                Account Code
                             </dt>
 
                             <dd
@@ -3489,7 +3539,7 @@ $csrf = dashboardCsrfToken();
                                 "
                             >
                                 <?= dashboardEscape(
-                                    $selectedAccount['AcctNo']
+                                    formatConsumerAccountCode($selectedAccount)
                                 ) ?>
                             </dd>
 
@@ -3768,7 +3818,6 @@ $csrf = dashboardCsrfToken();
     $consumptionHistory
     && (
         $page === 'dashboard'
-        || $page === 'consumption'
     )
 ): ?>
 
