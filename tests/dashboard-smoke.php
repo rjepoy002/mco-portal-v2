@@ -20,8 +20,13 @@ ob_start();
 require __DIR__ . '/../dashboard.php';
 $html = ob_get_clean();
 
-if (!str_contains($html, 'Add PALECO Account') || !str_contains($html, 'csrf_token')) {
-    throw new RuntimeException('Account management page did not render expected controls.');
+if (
+    !str_contains($html, 'PALECO Account Code')
+    || !str_contains($html, 'name="account_code"')
+    || !str_contains($html, 'Meter Serial Number')
+    || !str_contains($html, 'csrf_token')
+) {
+    throw new RuntimeException('Account management page did not render secure linking controls.');
 }
 
 $accounts = dashboardLinkedAccounts($pdo, (int) $userId);
@@ -46,4 +51,15 @@ if ($accounts) {
     throw new RuntimeException('Empty account list did not clear selection.');
 }
 
+
+$tokens = dashboardIssueAccountSelectionTokens([['AcctNo' => 'internal-test-account']]);
+$token = $tokens['internal-test-account'] ?? '';
+if (!preg_match('/^[a-f0-9]{64}$/', $token) || dashboardResolveAccountSelectionToken($token) !== 'internal-test-account') {
+    throw new RuntimeException('Opaque account selection token did not resolve server-side.');
+}
+
+$dashboardSource = file_get_contents(__DIR__ . '/../dashboard.php');
+if (!str_contains($dashboardSource, 'switch-account-modal') || str_contains($dashboardSource, 'account-selector')) {
+    throw new RuntimeException('Modal selector or legacy account dropdown markup is incorrect.');
+}
 echo "Dashboard smoke check passed.\n";

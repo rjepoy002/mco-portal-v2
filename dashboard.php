@@ -88,6 +88,7 @@ if (!in_array($currentHost, $allowedHosts, true)) {
    ========================================================= */
 
 require_once __DIR__ . '/includes/account-context.php';
+require_once __DIR__ . '/includes/account-linking.php';
 require_once __DIR__ . '/includes/billing-service.php';
 
 
@@ -554,9 +555,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
 
-    $acctNo = trim(
-        (string) ($_POST['account_number'] ?? '')
-    );
+    $acctNo = dashboardResolveAccountSelectionToken(
+        trim((string) ($_POST['account_token'] ?? ''))
+    ) ?? '';
 
 
     try {
@@ -603,7 +604,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            ADD ACCOUNT
 
            Manual verification:
-               master.AcctNo
+               master.AcctCode
                +
                master.MeterSerial
 
@@ -612,217 +613,124 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'add') {
 
-            $meter = trim(
-                (string) ($_POST['meter_number'] ?? '')
-            );
-
-            $label = trim(
-                (string) ($_POST['label'] ?? '')
-            );
-
-
-            if (
-                $acctNo === ''
-                || $meter === ''
-                || strlen($acctNo) > 15
-                || strlen($meter) > 20
-                || mb_strlen($label) > 100
-            ) {
-
-                dashboardReturn(
-                    'account-settings',
-                    'Enter a valid account number and meter number.',
-                    'error'
-                );
+            if (accountLinkRateLimited()) {
+                $_SESSION['account_link_form_error'] = 'Too many unsuccessful verification attempts. Please wait before trying again.';
+                dashboardReturn('account-settings', $_SESSION['account_link_form_error'], 'error');
             }
 
+            $accountCode = normalizePalecoAccCode((string) ($_POST['account_code'] ?? ''));
+            $meter = normalizePalecoMeterSerial((string) ($_POST['meter_number'] ?? ''));
+            $label = trim((string) ($_POST['label'] ?? ''));
 
-            /*
-             * PALECO MASTER — SELECT ONLY
-             */
+            if ($accountCode === null || $meter === null || mb_strlen($label) > 100) {
+                recordAccountLinkFailure();
+                $_SESSION['account_link_form_error'] = 'Enter a valid PALECO account code and meter serial number.';
+                dashboardReturn('account-settings', $_SESSION['account_link_form_error'], 'error');
+            }
 
-            $verify = $pdo->prepare("
-                SELECT
-                    AcctNo,
-                    AcctCode,
-                    Name,
-                    Address,
-                    Status,
-                    MeterSerial
-                FROM palecxzp_pal_db.master
-                WHERE AcctNo = ?
-                  AND MeterSerial = ?
-                LIMIT 1
-            ");
-
+            /* Both normalized AcctCode and MeterSerial must match one read-only master record. */
+            $verify = $pdo->prepare(palecoAccountVerificationSql());
             $verify->execute([
-                $acctNo,
-                $meter
+                ':acct_code' => $accountCode,
+                ':meter_serial' => $meter,
             ]);
-
-            $verifiedAccount = $verify->fetch(
-                PDO::FETCH_ASSOC
-            );
+            $verifiedAccount = $verify->fetch(PDO::FETCH_ASSOC);
 
             if (!$verifiedAccount) {
-
-                dashboardReturn(
-                    'account-settings',
-                    'The account and meter number could not be verified.',
-                    'error'
-                );
+                recordAccountLinkFailure();
+                $_SESSION['account_link_form_error'] = 'The account information could not be verified.';
+                dashboardReturn('account-settings', $_SESSION['account_link_form_error'], 'error');
             }
 
+            $verifiedAcctNo = trim((string) ($verifiedAccount['AcctNo'] ?? ''));
 
-            $pdo->beginTransaction();
-
-
-            /*
-             * Lock portal user.
-             */
-
-            $lock = $pdo->prepare("
-                SELECT id
-                FROM mco_portal.users
-                WHERE id = ?
-                FOR UPDATE
-            ");
-
-            $lock->execute([$userId]);
-
-
-            /*
-             * Check existing portal account link.
-             */
-
-            $check = $pdo->prepare("
-                SELECT
-                    id,
-                    status
-                FROM mco_portal.paleco_accounts
-                WHERE user_id = ?
-                  AND AcctNo = ?
-                LIMIT 1
-                FOR UPDATE
-            ");
-
-            $check->execute([
-                $userId,
-                $acctNo
-            ]);
-
-            $existing = $check->fetch(
-                PDO::FETCH_ASSOC
-            );
-
-
-            if (
-                $existing
-                && ($existing['status'] ?? '') === 'active'
-            ) {
-
-                $pdo->rollBack();
-
-                dashboardReturn(
-                    'account-settings',
-                    'This account is already linked.',
-                    'error'
-                );
+            if ($verifiedAcctNo === '' || !accountLinkAcquireLock($pdo, $verifiedAcctNo)) {
+                $_SESSION['account_link_form_error'] = 'Account linking is temporarily unavailable. Please try again.';
+                dashboardReturn('account-settings', $_SESSION['account_link_form_error'], 'error');
             }
 
+            try {
+                $pdo->beginTransaction();
 
-            /*
-             * Is this the first active account?
-             */
-
-            $count = $pdo->prepare("
-                SELECT COUNT(*)
-                FROM mco_portal.paleco_accounts
-                WHERE user_id = ?
-                  AND status = 'active'
-            ");
-
-            $count->execute([$userId]);
-
-            $first = (
-                (int) $count->fetchColumn() === 0
-            );
-
-
-            /*
-             * Restore previously inactive account.
-             */
-
-            if ($existing) {
-
-                $stmt = $pdo->prepare("
-                    UPDATE mco_portal.paleco_accounts
-                    SET
-                        account_nickname = ?,
-                        status = 'active',
-                        is_primary = ?,
-                        verified_at = NOW()
-                    WHERE id = ?
-                      AND user_id = ?
+                $lock = $pdo->prepare("
+                    SELECT id FROM mco_portal.users WHERE id = ? FOR UPDATE
                 ");
+                $lock->execute([$userId]);
 
-                $stmt->execute([
-                    $label !== '' ? $label : null,
-                    $first ? 1 : 0,
-                    $existing['id'],
-                    $userId
-                ]);
-
-            } else {
-
-                /*
-                 * INSERT only into portal database.
-                 */
-
-                $stmt = $pdo->prepare("
-                    INSERT INTO mco_portal.paleco_accounts
-                    (
-                        user_id,
-                        AcctNo,
-                        account_nickname,
-                        is_primary,
-                        status,
-                        verified_at
-                    )
-                    VALUES
-                    (
-                        ?,
-                        ?,
-                        ?,
-                        ?,
-                        'active',
-                        NOW()
-                    )
+                /* This portal has no global AcctNo uniqueness constraint. Do not transfer or share links silently. */
+                $otherOwner = $pdo->prepare("
+                    SELECT user_id
+                    FROM mco_portal.paleco_accounts
+                    WHERE AcctNo = ?
+                      AND user_id <> ?
+                    LIMIT 1
+                    FOR UPDATE
                 ");
+                $otherOwner->execute([$verifiedAcctNo, $userId]);
 
-                $stmt->execute([
-                    $userId,
-                    $acctNo,
-                    $label !== '' ? $label : null,
-                    $first ? 1 : 0
-                ]);
+                if ($otherOwner->fetchColumn()) {
+                    $pdo->rollBack();
+                    accountLinkReleaseLock($pdo, $verifiedAcctNo);
+                    $_SESSION['account_link_form_error'] = 'The account information could not be verified.';
+                    dashboardReturn('account-settings', $_SESSION['account_link_form_error'], 'error');
+                }
+
+                $check = $pdo->prepare("
+                    SELECT id, status
+                    FROM mco_portal.paleco_accounts
+                    WHERE user_id = ? AND AcctNo = ?
+                    LIMIT 1
+                    FOR UPDATE
+                ");
+                $check->execute([$userId, $verifiedAcctNo]);
+                $existing = $check->fetch(PDO::FETCH_ASSOC);
+
+                if ($existing && ($existing['status'] ?? '') === 'active') {
+                    $pdo->rollBack();
+                    accountLinkReleaseLock($pdo, $verifiedAcctNo);
+                    $_SESSION['account_link_form_error'] = 'This account is already linked.';
+                    dashboardReturn('account-settings', $_SESSION['account_link_form_error'], 'error');
+                }
+
+                $count = $pdo->prepare("
+                    SELECT COUNT(*) FROM mco_portal.paleco_accounts
+                    WHERE user_id = ? AND status = 'active'
+                ");
+                $count->execute([$userId]);
+                $first = (int) $count->fetchColumn() === 0;
+
+                if ($existing) {
+                    $stmt = $pdo->prepare("
+                        UPDATE mco_portal.paleco_accounts
+                        SET account_nickname = ?, status = 'active', is_primary = ?, verified_at = NOW()
+                        WHERE id = ? AND user_id = ?
+                    ");
+                    $stmt->execute([$label !== '' ? $label : null, $first ? 1 : 0, $existing['id'], $userId]);
+                } else {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO mco_portal.paleco_accounts
+                        (user_id, AcctNo, account_nickname, is_primary, status, verified_at)
+                        VALUES (?, ?, ?, ?, 'active', NOW())
+                    ");
+                    $stmt->execute([$userId, $verifiedAcctNo, $label !== '' ? $label : null, $first ? 1 : 0]);
+                }
+
+                $pdo->commit();
+            } finally {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                accountLinkReleaseLock($pdo, $verifiedAcctNo);
             }
 
-
-            $pdo->commit();
-
+            clearAccountLinkFailures();
 
             if ($first) {
-                $_SESSION['SelectedAcctNo'] = $acctNo;
+                $_SESSION['SelectedAcctNo'] = $verifiedAcctNo;
             }
 
-
-            dashboardReturn(
-                'account-settings',
-                'PALECO account linked successfully.'
-            );
+            dashboardReturn('account-settings', 'PALECO account linked successfully.');
         }
-
 
         /* =================================================
            RENAME ACCOUNT
@@ -1043,7 +951,6 @@ $linkedStmt = $pdo->prepare("
         m.Area,
         m.Book,
         m.MeterBrand,
-        m.MeterSerial,
         m.MemberCode,
         m.ConnectionType
 
@@ -1153,7 +1060,7 @@ if ($selectedAccount) {
 
     $_SESSION['SelectedAcctNo']
         = $selectedAccount['AcctNo'];
-}
+}$accountSelectionTokens = dashboardIssueAccountSelectionTokens($linkedAccounts);
 
 
 /*
@@ -1291,6 +1198,9 @@ $flash = $_SESSION['dashboard_flash']
     ?? null;
 
 unset($_SESSION['dashboard_flash']);
+
+$accountLinkFormError = $_SESSION['account_link_form_error'] ?? null;
+unset($_SESSION['account_link_form_error']);
 
 $csrf = dashboardCsrfToken();
 
@@ -1478,235 +1388,25 @@ $csrf = dashboardCsrfToken();
             <?php endif; ?>
 
 
-            <!-- =================================================
-                 VIEWING ACCOUNT
-                 ================================================= -->
-
             <?php if ($selectedAccount): ?>
-
-                <section
-                    class="
-                        rounded-2xl
-                        border border-slate-200
-                        bg-white
-                        p-5
-                        shadow-card
-                        sm:p-6
-                    "
-                >
-
-                    <div
-                        class="
-                            grid gap-5
-                            lg:grid-cols-[1fr_auto]
-                            lg:items-center
-                        "
-                    >
-
-                        <div class="min-w-0">
-
-                            <p
-                                class="
-                                    text-xs
-                                    font-bold
-                                    uppercase
-                                    tracking-[.14em]
-                                    text-paleco-700
-                                "
-                            >
-                                Viewing Account
-                            </p>
-
-
-                            <div
-                                class="
-                                    mt-1
-                                    flex
-                                    flex-wrap
-                                    items-center
-                                    gap-2
-                                "
-                            >
-
-                                <h2
-                                    class="
-                                        truncate
-                                        text-xl
-                                        font-bold
-                                    "
-                                >
-                                    <?= dashboardEscape(
-                                        $selectedAccount['account_nickname']
-                                        ?: (
-                                            $selectedAccount['Name']
-                                            ?: 'PALECO account'
-                                        )
-                                    ) ?>
-                                </h2>
-
-
-                                <?php if ($selectedAccount['is_primary']): ?>
-
-                                    <span
-                                        class="
-                                            rounded-full
-                                            bg-paleco-50
-                                            px-2.5 py-1
-                                            text-xs
-                                            font-bold
-                                            text-paleco-700
-                                        "
-                                    >
-                                        PRIMARY
-                                    </span>
-
-                                <?php endif; ?>
-
-                            </div>
-
-
-                            <p
-                                class="
-                                    mt-1
-                                    text-sm
-                                    text-slate-500
-                                "
-                            >
-                                <?= dashboardEscape(
-                                    formatConsumerAccountCode($selectedAccount)
-                                ) ?>
-                            </p>
-
-                        </div>
-
-
+                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+                    <p class="text-xs font-bold uppercase tracking-[.14em] text-paleco-700 dark:text-paleco-200">Viewing Account</p>
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <h2 class="min-w-0 break-words text-xl font-bold sm:text-2xl"><?= dashboardEscape($selectedAccount['Name'] ?: 'PALECO account') ?></h2>
+                        <?php if ($selectedAccount['is_primary']): ?><span class="rounded-full bg-paleco-50 px-2.5 py-1 text-xs font-bold text-paleco-700 dark:bg-paleco-900 dark:text-paleco-100">PRIMARY</span><?php endif; ?>
                         <?php if (count($linkedAccounts) > 1): ?>
-
-                            <form
-                                method="post"
-                                action="dashboard.php"
-                                class="w-full lg:w-auto"
-                            >
-
-                                <input
-                                    type="hidden"
-                                    name="csrf_token"
-                                    value="<?= dashboardEscape($csrf) ?>"
-                                >
-
-                                <input
-                                    type="hidden"
-                                    name="action"
-                                    value="switch"
-                                >
-
-                                <input
-                                    type="hidden"
-                                    name="return_page"
-                                    value="<?= dashboardEscape($page) ?>"
-                                >
-
-
-                                <label
-                                    for="account-selector"
-                                    class="
-                                        mb-1.5
-                                        block
-                                        text-xs
-                                        font-semibold
-                                        text-slate-500
-                                    "
-                                >
-                                    Switch account
-                                </label>
-
-
-                                <div
-                                    class="
-                                        flex
-                                        flex-col
-                                        gap-2
-                                        sm:flex-row
-                                    "
-                                >
-
-                                    <select
-                                        id="account-selector"
-                                        name="account_number"
-                                        class="
-                                            rounded-xl
-                                            border border-slate-300
-                                            bg-white
-                                            px-3 py-2.5
-                                            text-sm
-                                            outline-none
-                                            focus:border-paleco-500
-                                            focus:ring-4
-                                            focus:ring-paleco-500/10
-                                            lg:min-w-72
-                                        "
-                                    >
-
-                                        <?php foreach ($linkedAccounts as $account): ?>
-
-                                            <option
-                                                value="<?= dashboardEscape($account['AcctNo']) ?>"
-                                                <?= $account['AcctNo']
-                                                    === $selectedAccount['AcctNo']
-                                                    ? 'selected'
-                                                    : ''
-                                                ?>
-                                            >
-                                                <?= dashboardEscape(
-                                                    (
-                                                        $account['account_nickname']
-                                                        ?: (
-                                                            $account['Name']
-                                                            ?: 'PALECO account'
-                                                        )
-                                                    )
-                                                    . ' · '
-                                                    . formatConsumerAccountCode($account)
-                                                ) ?>
-                                                <?= $account['is_primary']
-                                                    ? ' (Primary)'
-                                                    : ''
-                                                ?>
-                                            </option>
-
-                                        <?php endforeach; ?>
-
-                                    </select>
-
-
-                                    <button
-                                        type="submit"
-                                        class="
-                                            rounded-xl
-                                            bg-paleco-700
-                                            px-5 py-2.5
-                                            text-sm
-                                            font-semibold
-                                            text-white
-                                            hover:bg-paleco-800
-                                        "
-                                    >
-                                        View
-                                    </button>
-
-                                </div>
-
-                            </form>
-
+                            <button type="button" data-switch-account-open class="ml-0 inline-flex items-center gap-2 rounded-xl border border-paleco-200 px-4 py-2 text-sm font-semibold text-paleco-700 transition hover:bg-paleco-50 focus:outline-none focus:ring-4 focus:ring-paleco-500/20 dark:border-paleco-800 dark:text-paleco-200 dark:hover:bg-paleco-900/40 sm:ml-auto" aria-haspopup="dialog" aria-controls="switch-account-dialog">
+                                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4"><path d="M7 7h11l-3-3M17 17H6l3 3"/><path d="M18 7a7 7 0 0 0-12-3M6 17a7 7 0 0 0 12 3"/></svg>Switch Account
+                            </button>
+                        <?php else: ?>
+                            <button type="button" disabled aria-describedby="switch-account-unavailable" class="ml-0 cursor-not-allowed rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-400 dark:border-slate-700 sm:ml-auto">Switch Account</button>
+                            <span id="switch-account-unavailable" class="w-full text-xs text-slate-500 dark:text-slate-400">No other linked accounts available.</span>
                         <?php endif; ?>
-
                     </div>
-
+                    <p class="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300"><?= dashboardEscape(trim((string) ($selectedAccount['AcctCode'] ?? '')) ?: 'Account code unavailable') ?></p>
+                    <p class="mt-1 break-words text-sm text-slate-500 dark:text-slate-400"><?= dashboardEscape($selectedAccount['Address'] ?: 'Service address unavailable') ?></p>
                 </section>
-
             <?php endif; ?>
-
-
             <!-- =================================================
                  MY ACCOUNTS
                  ================================================= -->
@@ -1895,23 +1595,6 @@ $csrf = dashboardCsrfToken();
                                         ?: 'Service address unavailable'
                                     ) ?>
                                 </p>
-
-                                <?php if (!empty($account['MeterSerial'])): ?>
-
-                                    <p
-                                        class="
-                                            pt-2
-                                            text-xs
-                                            text-slate-400
-                                        "
-                                    >
-                                        Meter:
-                                        <?= dashboardEscape(
-                                            $account['MeterSerial']
-                                        ) ?>
-                                    </p>
-
-                                <?php endif; ?>
 
                             </div>
 
@@ -2149,150 +1832,38 @@ $csrf = dashboardCsrfToken();
                     </p>
 
 
-                    <form
-                        method="post"
-                        class="
-                            mt-6
-                            grid gap-4
-                            md:grid-cols-3
-                        "
-                    >
-
-                        <input
-                            type="hidden"
-                            name="csrf_token"
-                            value="<?= dashboardEscape($csrf) ?>"
-                        >
-
-                        <input
-                            type="hidden"
-                            name="action"
-                            value="add"
-                        >
-
-
-                        <label
-                            class="
-                                text-sm
-                                font-semibold
-                                text-slate-700
-                            "
-                        >
-
-                            Account number
-
-                            <input
-                                name="account_number"
-                                maxlength="15"
-                                required
-                                autocomplete="off"
-                                class="
-                                    mt-1.5
-                                    block w-full
-                                    rounded-xl
-                                    border border-slate-300
-                                    px-3 py-2.5
-                                    outline-none
-                                    focus:border-paleco-500
-                                    focus:ring-4
-                                    focus:ring-paleco-500/10
-                                "
-                            >
-
-                        </label>
-
-
-                        <label
-                            class="
-                                text-sm
-                                font-semibold
-                                text-slate-700
-                            "
-                        >
-
-                            Meter number
-
-                            <input
-                                name="meter_number"
-                                maxlength="20"
-                                required
-                                autocomplete="off"
-                                class="
-                                    mt-1.5
-                                    block w-full
-                                    rounded-xl
-                                    border border-slate-300
-                                    px-3 py-2.5
-                                    outline-none
-                                    focus:border-paleco-500
-                                    focus:ring-4
-                                    focus:ring-paleco-500/10
-                                "
-                            >
-
-                        </label>
-
-
-                        <label
-                            class="
-                                text-sm
-                                font-semibold
-                                text-slate-700
-                            "
-                        >
-
-                            Friendly label
-
-                            <span
-                                class="
-                                    font-normal
-                                    text-slate-400
-                                "
-                            >
-                                (optional)
-                            </span>
-
-                            <input
-                                name="label"
-                                maxlength="100"
-                                placeholder="e.g. Home"
-                                class="
-                                    mt-1.5
-                                    block w-full
-                                    rounded-xl
-                                    border border-slate-300
-                                    px-3 py-2.5
-                                    outline-none
-                                    focus:border-paleco-500
-                                    focus:ring-4
-                                    focus:ring-paleco-500/10
-                                "
-                            >
-
-                        </label>
-
-
-                        <div class="md:col-span-3">
-
-                            <button
-                                type="submit"
-                                class="
-                                    rounded-xl
-                                    bg-paleco-700
-                                    px-5 py-2.5
-                                    text-sm
-                                    font-semibold
-                                    text-white
-                                    hover:bg-paleco-800
-                                "
-                            >
-                                Add PALECO Account
-                            </button>
-
+                    <?php if ($accountLinkFormError): ?>
+                        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300" role="alert">
+                            <?= dashboardEscape($accountLinkFormError) ?>
                         </div>
+                    <?php endif; ?>
 
+                    <form method="post" class="mt-6 grid gap-4 md:grid-cols-3" onsubmit="const submit = this.querySelector('[data-link-submit]'); if (submit) { submit.disabled = true; submit.textContent = 'Linking account…'; }">
+                        <input type="hidden" name="csrf_token" value="<?= dashboardEscape($csrf) ?>">
+                        <input type="hidden" name="action" value="add">
+
+                        <label class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            PALECO Account Code
+                            <input name="account_code" maxlength="12" required autocomplete="off" inputmode="text" placeholder="XX-XXXX-XXXX" aria-describedby="account-code-help" class="mt-1.5 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-paleco-500 focus:ring-4 focus:ring-paleco-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                            <span id="account-code-help" class="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400">Enter your PALECO account code.</span>
+                        </label>
+
+                        <label class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            Meter Serial Number
+                            <input name="meter_number" maxlength="20" required autocomplete="off" placeholder="Enter meter serial number" aria-describedby="meter-number-help" class="mt-1.5 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-paleco-500 focus:ring-4 focus:ring-paleco-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                            <span id="meter-number-help" class="mt-1 block text-xs font-normal text-slate-500 dark:text-slate-400">Enter the meter serial number registered to your account.</span>
+                        </label>
+
+                        <label class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            Friendly label <span class="font-normal text-slate-400">(optional)</span>
+                            <input name="label" maxlength="100" placeholder="e.g. Home" class="mt-1.5 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-paleco-500 focus:ring-4 focus:ring-paleco-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                        </label>
+
+                        <div class="flex flex-wrap gap-3 md:col-span-3">
+                            <button data-link-submit type="submit" class="rounded-xl bg-paleco-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-paleco-800 focus:outline-none focus:ring-4 focus:ring-paleco-500/30 disabled:cursor-not-allowed disabled:opacity-70">Link Account</button>
+                            <a href="dashboard.php?page=account-settings" class="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-paleco-500/10 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</a>
+                        </div>
                     </form>
-
                 </section>
 
 
@@ -2371,77 +1942,6 @@ $csrf = dashboardCsrfToken();
                  ================================================= -->
 
             <?php else: ?>
-
-
-                <!-- Account heading -->
-
-                <section
-                    class="
-                        flex
-                        flex-col
-                        gap-3
-                        sm:flex-row
-                        sm:items-end
-                        sm:justify-between
-                    "
-                >
-
-                    <div>
-
-                        <p
-                            class="
-                                text-xs
-                                font-bold
-                                uppercase
-                                tracking-[.14em]
-                                text-paleco-700
-                            "
-                        >
-                            Account Overview
-                        </p>
-
-                        <h2
-                            class="
-                                mt-1
-                                text-2xl
-                                font-bold
-                            "
-                        >
-                            <?= dashboardEscape(
-                                $selectedAccount['Name']
-                                ?: 'Service account'
-                            ) ?>
-                        </h2>
-
-                        <p
-                            class="
-                                mt-1
-                                text-sm
-                                text-slate-500
-                            "
-                        >
-                            <?= dashboardEscape(
-                                $selectedAccount['Address']
-                                ?: 'Service address unavailable'
-                            ) ?>
-                        </p>
-
-                    </div>
-
-
-                    <a
-                        href="dashboard.php?page=account-settings"
-                        class="
-                            text-sm
-                            font-semibold
-                            text-paleco-700
-                            hover:text-paleco-800
-                        "
-                    >
-                        Manage accounts →
-                    </a>
-
-                </section>
 
 
                 <?php if ($page === 'bills'): ?>
@@ -3257,34 +2757,6 @@ $csrf = dashboardCsrfToken();
                                     text-slate-400
                                 "
                             >
-                                Meter Number
-                            </dt>
-
-                            <dd
-                                class="
-                                    mt-1
-                                    text-sm
-                                    font-semibold
-                                "
-                            >
-                                <?= dashboardEscape(
-                                    $selectedAccount['MeterSerial']
-                                    ?: 'Unavailable'
-                                ) ?>
-                            </dd>
-
-                        </div>
-
-
-                        <div>
-
-                            <dt
-                                class="
-                                    text-xs
-                                    font-medium
-                                    text-slate-400
-                                "
-                            >
                                 Status
                             </dt>
 
@@ -3357,6 +2829,32 @@ $csrf = dashboardCsrfToken();
 
         </div>
 
+    <?php if ($selectedAccount && count($linkedAccounts) > 1): ?>
+        <div id="switch-account-modal" class="fixed inset-0 z-[70] hidden items-center justify-center p-4" aria-hidden="true">
+            <div data-switch-account-backdrop class="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"></div>
+            <section id="switch-account-dialog" role="dialog" aria-modal="true" aria-labelledby="switch-account-title" aria-describedby="switch-account-description" class="relative z-10 flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                <div class="flex items-start justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800 sm:p-6">
+                    <div class="min-w-0"><h2 id="switch-account-title" class="text-xl font-bold">Switch Account</h2><p id="switch-account-description" class="mt-1 text-sm text-slate-500 dark:text-slate-400">Select an account to view its dashboard.</p></div>
+                    <button type="button" data-switch-account-close class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-paleco-500 dark:text-slate-400 dark:hover:bg-slate-800" aria-label="Close account selector">×</button>
+                </div>
+                <div class="min-h-0 overflow-y-auto p-3 sm:p-4">
+                    <div class="space-y-2" role="list">
+                        <?php foreach ($linkedAccounts as $account): ?>
+                            <?php $isCurrent = (string) $account['AcctNo'] === (string) $selectedAccount['AcctNo']; ?>
+                            <form method="post" action="dashboard.php" class="contents" data-switch-account-form>
+                                <input type="hidden" name="csrf_token" value="<?= dashboardEscape($csrf) ?>"><input type="hidden" name="action" value="switch"><input type="hidden" name="return_page" value="<?= dashboardEscape($page) ?>"><input type="hidden" name="account_token" value="<?= dashboardEscape($accountSelectionTokens[$account['AcctNo']] ?? '') ?>">
+                                <button type="submit" <?= $isCurrent ? 'disabled aria-current="true"' : '' ?> class="w-full rounded-xl border p-4 text-left transition focus:outline-none focus:ring-4 focus:ring-paleco-500/20 <?= $isCurrent ? 'cursor-default border-paleco-500 bg-paleco-50 dark:border-paleco-700 dark:bg-paleco-900/40' : 'border-slate-200 hover:border-paleco-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-paleco-700 dark:hover:bg-slate-800/70' ?>">
+                                    <div class="flex flex-wrap items-center gap-2"><span class="min-w-0 break-words font-semibold"><?= dashboardEscape($account['Name'] ?: 'PALECO account') ?></span><?php if ($account['is_primary']): ?><span class="rounded-full bg-paleco-100 px-2 py-0.5 text-xs font-bold text-paleco-700 dark:bg-paleco-900 dark:text-paleco-100">PRIMARY</span><?php endif; ?><?php if ($isCurrent): ?><span class="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-200">CURRENTLY VIEWING</span><?php endif; ?></div>
+                                    <p class="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300"><?= dashboardEscape(trim((string) ($account['AcctCode'] ?? '')) ?: 'Account code unavailable') ?></p><p class="mt-1 break-words text-sm text-slate-500 dark:text-slate-400"><?= dashboardEscape($account['Address'] ?: 'Service address unavailable') ?></p>
+                                </button>
+                            </form>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <p data-switch-account-loading class="hidden border-t border-slate-100 px-5 py-3 text-sm font-medium text-paleco-700 dark:border-slate-800 dark:text-paleco-200">Switching account…</p>
+            </section>
+        </div>
+    <?php endif; ?>
     </main>
 
 </div>
@@ -3542,5 +3040,23 @@ $csrf = dashboardCsrfToken();
 </script>
 
 
-</body>
+<script>
+(() => {
+    const modal = document.getElementById('switch-account-modal');
+    if (!modal) return;
+    const dialog = document.getElementById('switch-account-dialog');
+    const openers = document.querySelectorAll('[data-switch-account-open]');
+    const closeButton = modal.querySelector('[data-switch-account-close]');
+    const backdrop = modal.querySelector('[data-switch-account-backdrop]');
+    const loading = modal.querySelector('[data-switch-account-loading]');
+    let opener = null;
+    const focusables = () => Array.from(dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled])'));
+    const close = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); modal.setAttribute('aria-hidden', 'true'); document.body.classList.remove('overflow-hidden'); opener?.focus(); };
+    const open = (button) => { opener = button; modal.classList.remove('hidden'); modal.classList.add('flex'); modal.setAttribute('aria-hidden', 'false'); document.body.classList.add('overflow-hidden'); focusables()[0]?.focus(); };
+    openers.forEach((button) => button.addEventListener('click', () => open(button)));
+    closeButton?.addEventListener('click', close); backdrop?.addEventListener('click', close);
+    document.addEventListener('keydown', (event) => { if (modal.classList.contains('hidden')) return; if (event.key === 'Escape') { event.preventDefault(); close(); } if (event.key === 'Tab') { const items = focusables(); if (!items.length) return; const first = items[0]; const last = items[items.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } });
+    modal.querySelectorAll('[data-switch-account-form]').forEach((form) => form.addEventListener('submit', (event) => { const button = form.querySelector('button'); if (button.disabled) { event.preventDefault(); return; } modal.querySelectorAll('button').forEach((item) => { item.disabled = true; }); loading?.classList.remove('hidden'); }));
+})();
+</script></body>
 </html>

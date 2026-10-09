@@ -19,7 +19,7 @@ function dashboardCsrfToken(): string
 function dashboardLinkedAccounts(PDO $pdo, int $userId): array
 {
     $stmt = $pdo->prepare('SELECT pa.id, pa.AcctNo, pa.account_nickname, pa.is_primary,
-        m.Name, m.Address, m.Status, m.MeterSerial, m.AcctCode
+        m.Name, m.Address, m.Status, m.AcctCode
         FROM paleco_accounts pa LEFT JOIN master m ON m.AcctNo = pa.AcctNo
         WHERE pa.user_id = ? AND pa.status = ?
         ORDER BY pa.is_primary DESC, pa.created_at ASC, pa.id ASC');
@@ -43,7 +43,35 @@ function dashboardSelectedAccount(array $accounts): ?array
     return $accounts[0];
 }
 
-function dashboardReturn(string $page, string $message, string $type = 'success'): void
+
+function dashboardIssueAccountSelectionTokens(array $accounts): array
+{
+    $tokens = [];
+    $sessionMap = [];
+
+    foreach ($accounts as $account) {
+        $acctNo = trim((string) ($account['AcctNo'] ?? ''));
+        if ($acctNo === '') {
+            continue;
+        }
+        $token = bin2hex(random_bytes(32));
+        $tokens[$acctNo] = $token;
+        $sessionMap[$token] = $acctNo;
+    }
+
+    $_SESSION['dashboard_account_selection_tokens'] = $sessionMap;
+    return $tokens;
+}
+
+function dashboardResolveAccountSelectionToken(string $token): ?string
+{
+    $tokens = $_SESSION['dashboard_account_selection_tokens'] ?? [];
+    if (!is_array($tokens) || !preg_match('/^[a-f0-9]{64}$/', $token)) {
+        return null;
+    }
+    $acctNo = $tokens[$token] ?? null;
+    return is_string($acctNo) && $acctNo !== '' ? $acctNo : null;
+}function dashboardReturn(string $page, string $message, string $type = 'success'): void
 {
     $_SESSION['dashboard_flash'] = ['message' => $message, 'type' => $type];
     header('Location: dashboard.php?page=' . rawurlencode($page));
