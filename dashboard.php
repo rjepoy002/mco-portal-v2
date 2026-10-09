@@ -88,6 +88,7 @@ if (!in_array($currentHost, $allowedHosts, true)) {
    ========================================================= */
 
 require_once __DIR__ . '/includes/account-context.php';
+require_once __DIR__ . '/includes/billing-service.php';
 
 
 /* =========================================================
@@ -169,6 +170,39 @@ function formatPortalDate(?string $date): string
     return date('M j, Y', $timestamp);
 }
 
+
+function unpaidBillStatus(?string $dueDate): array
+{
+    $dueDate = trim((string) $dueDate);
+
+    if ($dueDate === '') {
+        return [
+            'label' => 'Due Date Unavailable',
+            'class' => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+        ];
+    }
+
+    $timestamp = strtotime($dueDate);
+
+    if ($timestamp === false) {
+        return [
+            'label' => 'Due Date Unavailable',
+            'class' => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+        ];
+    }
+
+    if (date('Y-m-d', $timestamp) < date('Y-m-d')) {
+        return [
+            'label' => 'Overdue',
+            'class' => 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+        ];
+    }
+
+    return [
+        'label' => 'Not Yet Due',
+        'class' => 'bg-paleco-50 text-paleco-700 dark:bg-paleco-900 dark:text-paleco-100',
+    ];
+}
 
 /* =========================================================
    LEGACY EBILLS SYNCHRONIZATION
@@ -449,6 +483,23 @@ $page = (
     ? $requestedPage
     : 'dashboard';
 
+$requestedBillsTab = $_GET['tab'] ?? 'unpaid';
+$billsTab = (
+    $page === 'bills'
+    && is_string($requestedBillsTab)
+    && in_array($requestedBillsTab, ['unpaid', 'history'], true)
+)
+    ? $requestedBillsTab
+    : 'unpaid';
+
+/* Explicit configuration only; localhost alone never enables this notice. */
+$appEnvironment = strtolower((string) (getenv('MCO_APP_ENV') ?: 'production'));
+$isDevelopmentMode = in_array(
+    $appEnvironment,
+    ['development', 'local'],
+    true
+);
+
 
 /* =========================================================
    POST ACTIONS
@@ -458,9 +509,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = (string) ($_POST['action'] ?? '');
 
-    $returnPage = $action === 'switch'
-        ? 'dashboard'
-        : 'accounts';
+    $returnPage = 'accounts';
+
+    if ($action === 'switch') {
+        $requestedReturnPage = (string) ($_POST['return_page'] ?? 'dashboard');
+        $returnPage = array_key_exists($requestedReturnPage, $nav)
+            ? $requestedReturnPage
+            : 'dashboard';
+    }
 
 
     /* -----------------------------------------------------
@@ -512,7 +568,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$stmt->fetch()) {
 
                 dashboardReturn(
-                    'dashboard',
+                    $returnPage,
                     'That account is not linked to your profile.',
                     'error'
                 );
@@ -521,7 +577,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['SelectedAcctNo'] = $acctNo;
 
             dashboardReturn(
-                'dashboard',
+                $returnPage,
                 'Viewing account updated.'
             );
         }
@@ -1101,6 +1157,35 @@ if (
     exit;
 }
 
+
+/* =========================================================
+   UNPAID BILLS
+
+   The billing service verifies that the selected account is an
+   active portal link before it reads the legacy, read-only ledger.
+   ========================================================= */
+
+$unpaidBills = [];
+$unpaidBillSummary = [
+    'total_due' => 0.0,
+    'unpaid_count' => 0,
+    'overdue_count' => 0,
+];
+$unpaidBillsError = false;
+
+if ($selectedAccount) {
+    try {
+        $unpaidBills = getUnpaidBills(
+            $pdo,
+            $userId,
+            (string) $selectedAccount['AcctNo']
+        );
+        $unpaidBillSummary = summarizeUnpaidBills($unpaidBills);
+    } catch (Throwable $e) {
+        $unpaidBillsError = true;
+        error_log('Unable to load unpaid PALECO bills: ' . $e->getMessage());
+    }
+}
 
 /* =========================================================
    BILL HISTORY
@@ -1804,6 +1889,12 @@ $csrf = dashboardCsrfToken();
                                     type="hidden"
                                     name="action"
                                     value="switch"
+                                >
+
+                                <input
+                                    type="hidden"
+                                    name="return_page"
+                                    value="<?= dashboardEscape($page) ?>"
                                 >
 
 
@@ -2627,6 +2718,30 @@ $csrf = dashboardCsrfToken();
                 </section>
 
 
+                <?php if ($page === 'bills'): ?>
+                    <nav
+                        class="flex border-b border-slate-200 dark:border-slate-800"
+                        aria-label="My Bills sections"
+                        role="tablist"
+                    >
+                        <a
+                            href="dashboard.php?page=bills&amp;tab=unpaid"
+                            role="tab"
+                            aria-selected="<?= $billsTab === 'unpaid' ? 'true' : 'false' ?>"
+                            class="border-b-2 px-4 py-3 text-sm font-semibold <?= $billsTab === 'unpaid' ? 'border-paleco-700 text-paleco-700 dark:text-paleco-200' : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white' ?>"
+                        >
+                            Unpaid Bills
+                        </a>
+                        <a
+                            href="dashboard.php?page=bills&amp;tab=history"
+                            role="tab"
+                            aria-selected="<?= $billsTab === 'history' ? 'true' : 'false' ?>"
+                            class="border-b-2 px-4 py-3 text-sm font-semibold <?= $billsTab === 'history' ? 'border-paleco-700 text-paleco-700 dark:text-paleco-200' : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white' ?>"
+                        >
+                            Bill History
+                        </a>
+                    </nav>
+                <?php endif; ?>
                 <!-- =================================================
                      SUMMARY
                      ================================================= -->
@@ -2641,49 +2756,26 @@ $csrf = dashboardCsrfToken();
 
                     <!-- Amount due -->
 
-                    <article
-                        class="
-                            rounded-2xl
-                            border border-slate-200
-                            bg-white
-                            p-5
-                            shadow-card
-                        "
-                    >
-
-                        <p
-                            class="
-                                text-xs
-                                font-bold
-                                uppercase
-                                tracking-[.12em]
-                                text-slate-400
-                            "
-                        >
-                            Amount Due
-                        </p>
-
-                        <h3
-                            class="
-                                mt-4
-                                text-2xl
-                                font-bold
-                            "
-                        >
-                            —
-                        </h3>
-
-                        <p
-                            class="
-                                mt-1
-                                text-sm
-                                text-slate-500
-                            "
-                        >
-                            Awaiting arledger integration.
-                        </p>
-
+                    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+                        <p class="text-xs font-bold uppercase tracking-[.12em] text-slate-400">Amount Due</p>
+                        <?php if ($unpaidBillsError): ?>
+                            <h3 class="mt-4 text-2xl font-bold">—</h3>
+                            <p class="mt-1 text-sm text-slate-500">Balance is temporarily unavailable.</p>
+                        <?php else: ?>
+                            <h3 class="mt-4 text-2xl font-bold">
+                                ₱<?= number_format((float) $unpaidBillSummary['total_due'], 2) ?>
+                            </h3>
+                            <p class="mt-1 text-sm text-slate-500">
+                                <?= (int) $unpaidBillSummary['unpaid_count'] ?> unpaid bill<?= (int) $unpaidBillSummary['unpaid_count'] === 1 ? '' : 's' ?>
+                                <?php if ($unpaidBillSummary['overdue_count']): ?>
+                                    · <?= (int) $unpaidBillSummary['overdue_count'] ?> overdue
+                                <?php endif; ?>
+                            </p>
+                        <?php endif; ?>
+                        <a href="dashboard.php?page=bills" class="mt-3 inline-block text-sm font-semibold text-paleco-700 hover:text-paleco-800">View unpaid bills →</a>
                     </article>
+
+
 
 
                     <!-- Latest bill -->
@@ -2948,6 +3040,7 @@ $csrf = dashboardCsrfToken();
                 <?php if (
                     $page === 'dashboard'
                     || $page === 'bill-history'
+                    || ($page === 'bills' && $billsTab === 'history')
                 ): ?>
 
                     <section
@@ -3220,84 +3313,111 @@ $csrf = dashboardCsrfToken();
                      MY BILLS
                      ================================================= -->
 
-                <?php if ($page === 'bills'): ?>
+                <?php if ($page === 'bills' && $billsTab === 'unpaid'): ?>
 
-                    <section
-                        class="
-                            rounded-2xl
-                            border border-slate-200
-                            bg-white
-                            p-6
-                            shadow-card
-                        "
-                    >
+                    <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
+                        <div class="border-b border-slate-100 p-5 sm:p-6">
+                            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <p class="text-xs font-bold uppercase tracking-[.14em] text-paleco-700">Outstanding Bills</p>
+                                    <h2 class="mt-1 text-lg font-bold">Current balance</h2>
+                                    <p class="mt-1 text-sm text-slate-500">
+                                        Account <?= dashboardEscape($selectedAccount['AcctNo']) ?>
+                                    </p>
+                                </div>
+                                <a href="dashboard.php?page=accounts" class="text-sm font-semibold text-paleco-700 hover:text-paleco-800">
+                                    Switch account →
+                                </a>
+                            </div>
 
-                        <p
-                            class="
-                                text-xs
-                                font-bold
-                                uppercase
-                                tracking-[.14em]
-                                text-paleco-700
-                            "
-                        >
-                            Outstanding Bills
-                        </p>
+                            <?php if ($isDevelopmentMode): ?>
+                                <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200" role="note">
+                                    Development data — billing balances may not reflect current PALECO records.
+                                </div>
+                            <?php endif; ?>
 
-                        <h2
-                            class="
-                                mt-1
-                                text-lg
-                                font-bold
-                            "
-                        >
-                            Current balance
-                        </h2>
-
-
-                        <div
-                            class="
-                                mt-5
-                                rounded-xl
-                                border
-                                border-dashed
-                                border-slate-300
-                                bg-slate-50
-                                px-5 py-10
-                                text-center
-                            "
-                        >
-
-                            <h3
-                                class="
-                                    text-sm
-                                    font-semibold
-                                "
-                            >
-                                Ledger integration pending
-                            </h3>
-
-                            <p
-                                class="
-                                    mx-auto
-                                    mt-2
-                                    max-w-lg
-                                    text-sm
-                                    leading-6
-                                    text-slate-500
-                                "
-                            >
-                                Current unpaid balances and
-                                surcharges will be loaded from
-                                the PALECO arledger table after
-                                its local schema is confirmed.
-                            </p>
-
+                            <?php if (!$unpaidBillsError): ?>
+                                <div class="mt-5 grid gap-3 sm:grid-cols-3">
+                                    <div class="rounded-xl bg-slate-50 p-4">
+                                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total amount due</p>
+                                        <p class="mt-1 text-2xl font-bold">₱<?= number_format((float) $unpaidBillSummary['total_due'], 2) ?></p>
+                                    </div>
+                                    <div class="rounded-xl bg-slate-50 p-4">
+                                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Unpaid bills</p>
+                                        <p class="mt-1 text-2xl font-bold"><?= (int) $unpaidBillSummary['unpaid_count'] ?></p>
+                                    </div>
+                                    <div class="rounded-xl bg-slate-50 p-4">
+                                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Overdue</p>
+                                        <p class="mt-1 text-2xl font-bold <?= $unpaidBillSummary['overdue_count'] ? 'text-red-600 dark:text-red-400' : '' ?>">
+                                            <?= (int) $unpaidBillSummary['overdue_count'] ?>
+                                        </p>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                         </div>
 
+                        <?php if ($unpaidBillsError): ?>
+                            <div class="px-6 py-12 text-center text-sm text-slate-500">
+                                We could not load your outstanding bills right now. Please try again later.
+                            </div>
+                        <?php elseif ($unpaidBills): ?>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                    <thead class="bg-slate-50">
+                                        <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                            <th class="px-5 py-3">Bill month</th>
+                                            <th class="px-5 py-3">Due date</th>
+                                            <th class="px-5 py-3 text-right">Outstanding</th>
+                                            <th class="px-5 py-3 text-right">Surcharge</th>
+                                            <th class="px-5 py-3 text-right">Total amount</th>
+                                            <th class="px-5 py-3">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 bg-white">
+                                        <?php foreach ($unpaidBills as $bill): ?>
+                                            <tr class="hover:bg-slate-50">
+                                                <td class="whitespace-nowrap px-5 py-4 font-semibold">
+                                                    <?= dashboardEscape(formatBillMonth($bill['bill_month'])) ?>
+                                                </td>
+                                                <td class="whitespace-nowrap px-5 py-4 text-slate-600">
+                                                    <?= dashboardEscape(formatPortalDate($bill['due_date'])) ?>
+                                                </td>
+                                                <td class="whitespace-nowrap px-5 py-4 text-right text-slate-600">
+                                                    ₱<?= number_format((float) $bill['outstanding_balance'], 2) ?>
+                                                </td>
+                                                <td class="whitespace-nowrap px-5 py-4 text-right text-slate-600">
+                                                    ₱<?= number_format((float) $bill['surcharge'], 2) ?>
+                                                </td>
+                                                <td class="whitespace-nowrap px-5 py-4 text-right font-bold">
+                                                    ₱<?= number_format((float) $bill['total_due'], 2) ?>
+                                                </td>
+                                                <td class="whitespace-nowrap px-5 py-4">
+                                                    <?php $billStatus = unpaidBillStatus($bill['due_date']); ?>
+                                                    <span class="rounded-full px-2.5 py-1 text-xs font-bold <?= dashboardEscape($billStatus['class']) ?>">
+                                                        <?= dashboardEscape($billStatus['label']) ?>
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php else: ?>
+                            <div class="px-6 py-12 text-center">
+                                <h3 class="text-base font-semibold">No Unpaid Bills</h3>
+                                <p class="mt-2 text-sm text-slate-500">
+                                    You currently have no outstanding bills for this account.
+                                </p>
+                                <p class="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                    Total Outstanding Balance: ₱0.00
+                                </p>
+                            </div>
+                        <?php endif; ?>
                     </section>
 
                 <?php endif; ?>
+
+
 
 
                 <!-- =================================================
