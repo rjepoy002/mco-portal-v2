@@ -16,6 +16,35 @@ function dashboardCsrfToken(): string
     return $_SESSION['dashboard_csrf'];
 }
 
+function dashboardFormatConsumerName($value): string
+{
+    $value = trim((string) $value);
+    return $value === '' ? 'Consumer name unavailable' : mb_strtoupper($value, 'UTF-8');
+}
+
+function dashboardFormatServiceAddress($value): string
+{
+    $value = trim((string) $value);
+    if ($value === '') {
+        return 'Service address unavailable';
+    }
+
+    return mb_convert_case(mb_strtolower($value, 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
+}
+
+function dashboardFormatAccountStatus($value): string
+{
+    $value = trim((string) $value);
+    return $value === '' ? 'Unavailable' : mb_strtoupper($value, 'UTF-8');
+}
+
+function dashboardDisplayAccountName(array $account): string
+{
+    $label = trim((string) ($account['account_nickname'] ?? ''));
+    return $label !== ''
+        ? $label
+        : dashboardFormatConsumerName($account['Name'] ?? '');
+}
 function dashboardLinkedAccounts(PDO $pdo, int $userId): array
 {
     $stmt = $pdo->prepare('SELECT pa.id, pa.AcctNo, pa.account_nickname, pa.is_primary,

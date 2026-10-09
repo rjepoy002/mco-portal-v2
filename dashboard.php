@@ -733,78 +733,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         /* =================================================
-           RENAME ACCOUNT
+           FRIENDLY LABEL
            ================================================= */
 
-        if ($action === 'rename') {
+        if ($action === 'save_label' || $action === 'remove_label') {
+            $isRemoval = $action === 'remove_label';
+            $label = trim((string) ($_POST['label'] ?? ''));
 
-            $label = trim(
-                (string) ($_POST['label'] ?? '')
-            );
-
-            if (mb_strlen($label) > 100) {
-
-                dashboardReturn(
-                    'account-settings',
-                    'The label must be 100 characters or fewer.',
-                    'error'
-                );
+            if (!$isRemoval && $label === '') {
+                dashboardReturn('account-settings', 'Enter a friendly label before saving.', 'error');
             }
 
-
-            /*
-             * Verify account ownership.
-             */
+            if (!$isRemoval && mb_strlen($label) > 100) {
+                dashboardReturn('account-settings', 'The label must be 100 characters or fewer.', 'error');
+            }
 
             $check = $pdo->prepare("
-                SELECT id
-                FROM mco_portal.paleco_accounts
-                WHERE user_id = ?
-                  AND AcctNo = ?
-                  AND status = 'active'
+                SELECT id FROM mco_portal.paleco_accounts
+                WHERE user_id = ? AND AcctNo = ? AND status = 'active'
                 LIMIT 1
             ");
-
-            $check->execute([
-                $userId,
-                $acctNo
-            ]);
+            $check->execute([$userId, $acctNo]);
 
             if (!$check->fetch()) {
-
-                dashboardReturn(
-                    'account-settings',
-                    'That account is not linked to your profile.',
-                    'error'
-                );
+                dashboardReturn('account-settings', 'That account is not linked to your profile.', 'error');
             }
-
-
-            /*
-             * Portal-owned nickname only.
-             */
 
             $stmt = $pdo->prepare("
                 UPDATE mco_portal.paleco_accounts
                 SET account_nickname = ?
-                WHERE user_id = ?
-                  AND AcctNo = ?
-                  AND status = 'active'
+                WHERE user_id = ? AND AcctNo = ? AND status = 'active'
             ");
-
-            $stmt->execute([
-                $label !== '' ? $label : null,
-                $userId,
-                $acctNo
-            ]);
-
+            $stmt->execute([$isRemoval ? null : $label, $userId, $acctNo]);
 
             dashboardReturn(
                 'account-settings',
-                'Account label saved.'
+                $isRemoval ? 'Friendly label removed.' : 'Account label saved.'
             );
         }
-
 
         /* =================================================
            MAKE PRIMARY
@@ -1392,7 +1358,7 @@ $csrf = dashboardCsrfToken();
                 <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6">
                     <p class="text-xs font-bold uppercase tracking-[.14em] text-paleco-700 dark:text-paleco-200">Viewing Account</p>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
-                        <h2 class="min-w-0 break-words text-xl font-bold sm:text-2xl"><?= dashboardEscape($selectedAccount['Name'] ?: 'PALECO account') ?></h2>
+                        <h2 class="min-w-0 break-words text-xl font-bold sm:text-2xl"><?= dashboardEscape(dashboardDisplayAccountName($selectedAccount)) ?></h2>
                         <?php if ($selectedAccount['is_primary']): ?><span class="rounded-full bg-paleco-50 px-2.5 py-1 text-xs font-bold text-paleco-700 dark:bg-paleco-900 dark:text-paleco-100">PRIMARY</span><?php endif; ?>
                         <?php if (count($linkedAccounts) > 1): ?>
                             <button type="button" data-switch-account-open class="ml-0 inline-flex items-center gap-2 rounded-xl border border-paleco-200 px-4 py-2 text-sm font-semibold text-paleco-700 transition hover:bg-paleco-50 focus:outline-none focus:ring-4 focus:ring-paleco-500/20 dark:border-paleco-800 dark:text-paleco-200 dark:hover:bg-paleco-900/40 sm:ml-auto" aria-haspopup="dialog" aria-controls="switch-account-dialog">
@@ -1404,7 +1370,7 @@ $csrf = dashboardCsrfToken();
                         <?php endif; ?>
                     </div>
                     <p class="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300"><?= dashboardEscape(trim((string) ($selectedAccount['AcctCode'] ?? '')) ?: 'Account code unavailable') ?></p>
-                    <p class="mt-1 break-words text-sm text-slate-500 dark:text-slate-400"><?= dashboardEscape($selectedAccount['Address'] ?: 'Service address unavailable') ?></p>
+                    <p class="mt-1 break-words text-sm text-slate-500 dark:text-slate-400"><?= dashboardEscape(dashboardFormatServiceAddress($selectedAccount['Address'] ?? '')) ?></p>
                 </section>
             <?php endif; ?>
             <!-- =================================================
@@ -1541,13 +1507,7 @@ $csrf = dashboardCsrfToken();
                                             font-bold
                                         "
                                     >
-                                        <?= dashboardEscape(
-                                            $account['account_nickname']
-                                            ?: (
-                                                $account['Name']
-                                                ?: 'PALECO account'
-                                            )
-                                        ) ?>
+                                        <?= dashboardEscape(dashboardDisplayAccountName($account)) ?>
                                     </h3>
 
                                 </div>
@@ -1583,17 +1543,11 @@ $csrf = dashboardCsrfToken();
                             >
 
                                 <p class="font-medium">
-                                    <?= dashboardEscape(
-                                        $account['Name']
-                                        ?: 'Account holder unavailable'
-                                    ) ?>
+                                    <?= dashboardEscape(dashboardFormatConsumerName($account['Name'] ?? '')) ?>
                                 </p>
 
                                 <p class="text-slate-500">
-                                    <?= dashboardEscape(
-                                        $account['Address']
-                                        ?: 'Service address unavailable'
-                                    ) ?>
+                                    <?= dashboardEscape(dashboardFormatServiceAddress($account['Address'] ?? '')) ?>
                                 </p>
 
                             </div>
@@ -1626,8 +1580,8 @@ $csrf = dashboardCsrfToken();
 
                                     <input
                                         type="hidden"
-                                        name="account_number"
-                                        value="<?= dashboardEscape($account['AcctNo']) ?>"
+                                        name="account_token"
+                                        value="<?= dashboardEscape($accountSelectionTokens[$account['AcctNo']] ?? '') ?>"
                                     >
 
                                     <button
@@ -1665,8 +1619,8 @@ $csrf = dashboardCsrfToken();
 
                                         <input
                                             type="hidden"
-                                            name="account_number"
-                                            value="<?= dashboardEscape($account['AcctNo']) ?>"
+                                            name="account_token"
+                                        value="<?= dashboardEscape($accountSelectionTokens[$account['AcctNo']] ?? '') ?>"
                                         >
 
                                         <button
@@ -1691,91 +1645,24 @@ $csrf = dashboardCsrfToken();
                             </div>
 
 
-                            <!-- Label -->
-
-                            <form
-                                method="post"
-                                class="
-                                    mt-5
-                                    border-t
-                                    border-slate-100
-                                    pt-4
-                                "
-                            >
-
-                                <input
-                                    type="hidden"
-                                    name="csrf_token"
-                                    value="<?= dashboardEscape($csrf) ?>"
-                                >
-
-                                <input
-                                    type="hidden"
-                                    name="action"
-                                    value="rename"
-                                >
-
-                                <input
-                                    type="hidden"
-                                    name="account_number"
-                                    value="<?= dashboardEscape($account['AcctNo']) ?>"
-                                >
-
-
-                                <label
-                                    class="
-                                        mb-1.5
-                                        block
-                                        text-xs
-                                        font-semibold
-                                        text-slate-500
-                                    "
-                                >
-                                    Friendly label
-                                </label>
-
-
-                                <div class="flex gap-2">
-
-                                    <input
-                                        name="label"
-                                        maxlength="100"
-                                        value="<?= dashboardEscape(
-                                            $account['account_nickname']
-                                            ?? ''
-                                        ) ?>"
-                                        placeholder="e.g. Home"
-                                        class="
-                                            min-w-0
-                                            flex-1
-                                            rounded-xl
-                                            border border-slate-300
-                                            px-3 py-2
-                                            text-sm
-                                            outline-none
-                                            focus:border-paleco-500
-                                            focus:ring-4
-                                            focus:ring-paleco-500/10
-                                        "
-                                    >
-
-                                    <button
-                                        type="submit"
-                                        class="
-                                            rounded-xl
-                                            bg-slate-900
-                                            px-4 py-2
-                                            text-sm
-                                            font-semibold
-                                            text-white
-                                            hover:bg-slate-800
-                                        "
-                                    >
-                                        Save
-                                    </button>
-
+                            <!-- Friendly label -->
+                            <?php $savedLabel = trim((string) ($account['account_nickname'] ?? '')); ?>
+                            <form method="post" class="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800" data-friendly-label-form data-saved-label="<?= dashboardEscape($savedLabel) ?>">
+                                <input type="hidden" name="csrf_token" value="<?= dashboardEscape($csrf) ?>">
+                                <input type="hidden" name="action" value="save_label" data-friendly-label-action>
+                                <input type="hidden" name="account_token" value="<?= dashboardEscape($accountSelectionTokens[$account['AcctNo']] ?? '') ?>">
+                                <label class="mb-1.5 block text-xs font-semibold text-slate-500 dark:text-slate-400">Friendly label</label>
+                                <div class="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                                    <div class="relative min-w-0 flex-1">
+                                        <input name="label" maxlength="100" value="<?= dashboardEscape($savedLabel) ?>" placeholder="e.g. Home" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-paleco-500 focus:ring-4 focus:ring-paleco-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 <?= $savedLabel !== '' ? 'pr-10' : '' ?>" data-friendly-label-input>
+                                        <?php if ($savedLabel !== ''): ?>
+                                            <button type="button" data-friendly-label-remove class="absolute inset-y-0 right-0 inline-flex items-center px-3 text-slate-400 transition hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-paleco-500 dark:hover:text-slate-200" aria-label="Remove friendly label" title="Remove friendly label">
+                                                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                    <button type="submit" data-friendly-label-save class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-500/20 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white <?= $savedLabel !== '' ? 'hidden' : '' ?>">Save</button>
                                 </div>
-
                             </form>
 
                         </article>
@@ -1785,6 +1672,14 @@ $csrf = dashboardCsrfToken();
                 </div>
 
 
+                <div id="remove-friendly-label-modal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4" aria-hidden="true">
+                    <div data-remove-label-backdrop class="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"></div>
+                    <section role="dialog" aria-modal="true" aria-labelledby="remove-friendly-label-title" aria-describedby="remove-friendly-label-description" class="relative z-10 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:p-6">
+                        <h2 id="remove-friendly-label-title" class="text-xl font-bold">Remove friendly label?</h2>
+                        <p id="remove-friendly-label-description" class="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">Are you sure you want to remove this label? The account will display its original consumer name.</p>
+                        <div class="mt-6 flex flex-wrap justify-end gap-3"><button type="button" data-remove-label-cancel class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-paleco-500/10 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button><button type="button" data-remove-label-confirm class="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-500/30">Remove Label</button></div>
+                    </section>
+                </div>
                 <!-- Add account -->
 
                 <section
@@ -2739,10 +2634,7 @@ $csrf = dashboardCsrfToken();
                                     font-semibold
                                 "
                             >
-                                <?= dashboardEscape(
-                                    $selectedAccount['Name']
-                                    ?: 'Unavailable'
-                                ) ?>
+                                <?= dashboardEscape(dashboardFormatConsumerName($selectedAccount['Name'] ?? '')) ?>
                             </dd>
 
                         </div>
@@ -2767,10 +2659,7 @@ $csrf = dashboardCsrfToken();
                                     font-semibold
                                 "
                             >
-                                <?= dashboardEscape(
-                                    $selectedAccount['Status']
-                                    ?: 'Unavailable'
-                                ) ?>
+                                <?= dashboardEscape(dashboardFormatAccountStatus($selectedAccount['Status'] ?? '')) ?>
                             </dd>
 
                         </div>
@@ -2795,10 +2684,7 @@ $csrf = dashboardCsrfToken();
                                     font-semibold
                                 "
                             >
-                                <?= dashboardEscape(
-                                    $selectedAccount['Address']
-                                    ?: 'Unavailable'
-                                ) ?>
+                                <?= dashboardEscape(dashboardFormatServiceAddress($selectedAccount['Address'] ?? '')) ?>
                             </dd>
 
                         </div>
@@ -2844,8 +2730,8 @@ $csrf = dashboardCsrfToken();
                             <form method="post" action="dashboard.php" class="contents" data-switch-account-form>
                                 <input type="hidden" name="csrf_token" value="<?= dashboardEscape($csrf) ?>"><input type="hidden" name="action" value="switch"><input type="hidden" name="return_page" value="<?= dashboardEscape($page) ?>"><input type="hidden" name="account_token" value="<?= dashboardEscape($accountSelectionTokens[$account['AcctNo']] ?? '') ?>">
                                 <button type="submit" <?= $isCurrent ? 'disabled aria-current="true"' : '' ?> class="w-full rounded-xl border p-4 text-left transition focus:outline-none focus:ring-4 focus:ring-paleco-500/20 <?= $isCurrent ? 'cursor-default border-paleco-500 bg-paleco-50 dark:border-paleco-700 dark:bg-paleco-900/40' : 'border-slate-200 hover:border-paleco-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-paleco-700 dark:hover:bg-slate-800/70' ?>">
-                                    <div class="flex flex-wrap items-center gap-2"><span class="min-w-0 break-words font-semibold"><?= dashboardEscape($account['Name'] ?: 'PALECO account') ?></span><?php if ($account['is_primary']): ?><span class="rounded-full bg-paleco-100 px-2 py-0.5 text-xs font-bold text-paleco-700 dark:bg-paleco-900 dark:text-paleco-100">PRIMARY</span><?php endif; ?><?php if ($isCurrent): ?><span class="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-200">CURRENTLY VIEWING</span><?php endif; ?></div>
-                                    <p class="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300"><?= dashboardEscape(trim((string) ($account['AcctCode'] ?? '')) ?: 'Account code unavailable') ?></p><p class="mt-1 break-words text-sm text-slate-500 dark:text-slate-400"><?= dashboardEscape($account['Address'] ?: 'Service address unavailable') ?></p>
+                                    <div class="flex flex-wrap items-center gap-2"><span class="min-w-0 break-words font-semibold"><?= dashboardEscape(dashboardDisplayAccountName($account)) ?></span><?php if ($account['is_primary']): ?><span class="rounded-full bg-paleco-100 px-2 py-0.5 text-xs font-bold text-paleco-700 dark:bg-paleco-900 dark:text-paleco-100">PRIMARY</span><?php endif; ?><?php if ($isCurrent): ?><span class="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-200">CURRENTLY VIEWING</span><?php endif; ?></div>
+                                    <p class="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300"><?= dashboardEscape(trim((string) ($account['AcctCode'] ?? '')) ?: 'Account code unavailable') ?></p><p class="mt-1 break-words text-sm text-slate-500 dark:text-slate-400"><?= dashboardEscape(dashboardFormatServiceAddress($account['Address'] ?? '')) ?></p>
                                 </button>
                             </form>
                         <?php endforeach; ?>
@@ -3057,6 +2943,32 @@ $csrf = dashboardCsrfToken();
     closeButton?.addEventListener('click', close); backdrop?.addEventListener('click', close);
     document.addEventListener('keydown', (event) => { if (modal.classList.contains('hidden')) return; if (event.key === 'Escape') { event.preventDefault(); close(); } if (event.key === 'Tab') { const items = focusables(); if (!items.length) return; const first = items[0]; const last = items[items.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } });
     modal.querySelectorAll('[data-switch-account-form]').forEach((form) => form.addEventListener('submit', (event) => { const button = form.querySelector('button'); if (button.disabled) { event.preventDefault(); return; } modal.querySelectorAll('button').forEach((item) => { item.disabled = true; }); loading?.classList.remove('hidden'); }));
+})();
+</script><script>
+(() => {
+    const modal = document.getElementById('remove-friendly-label-modal');
+    if (!modal) return;
+    const cancel = modal.querySelector('[data-remove-label-cancel]');
+    const confirm = modal.querySelector('[data-remove-label-confirm]');
+    const backdrop = modal.querySelector('[data-remove-label-backdrop]');
+    let activeForm = null;
+    let opener = null;
+    const close = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); modal.setAttribute('aria-hidden', 'true'); document.body.classList.remove('overflow-hidden'); opener?.focus(); activeForm = null; };
+    const open = (button) => { opener = button; activeForm = button.closest('[data-friendly-label-form]'); modal.classList.remove('hidden'); modal.classList.add('flex'); modal.setAttribute('aria-hidden', 'false'); document.body.classList.add('overflow-hidden'); cancel?.focus(); };
+    document.querySelectorAll('[data-friendly-label-form]').forEach((form) => {
+        const input = form.querySelector('[data-friendly-label-input]');
+        const save = form.querySelector('[data-friendly-label-save]');
+        const remove = form.querySelector('[data-friendly-label-remove]');
+        const action = form.querySelector('[data-friendly-label-action]');
+        const saved = form.dataset.savedLabel || '';
+        const updateSave = () => save?.classList.toggle('hidden', input.value === saved);
+        input?.addEventListener('input', updateSave);
+        remove?.addEventListener('click', () => open(remove));
+        form.addEventListener('submit', (event) => { const removing = action?.value === 'remove_label'; const submitter = event.submitter || save; if ((!submitter || submitter.classList.contains('hidden')) && !removing) { event.preventDefault(); return; } form.querySelectorAll('button').forEach((control) => { control.disabled = true; }); if (input) input.readOnly = true; if (!removing) submitter.textContent = 'Saving…'; });
+    });
+    cancel?.addEventListener('click', close); backdrop?.addEventListener('click', close);
+    confirm?.addEventListener('click', () => { if (!activeForm) return; const input = activeForm.querySelector('[data-friendly-label-input]'); const action = activeForm.querySelector('[data-friendly-label-action]'); input.value = ''; action.value = 'remove_label'; confirm.disabled = true; cancel.disabled = true; confirm.textContent = 'Removing…'; activeForm.requestSubmit(); });
+    document.addEventListener('keydown', (event) => { if (modal.classList.contains('hidden')) return; if (event.key === 'Escape') { event.preventDefault(); close(); } if (event.key === 'Tab') { const controls = Array.from(modal.querySelectorAll('button:not([disabled])')); const first = controls[0]; const last = controls[controls.length - 1]; if (!first) return; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } });
 })();
 </script></body>
 </html>

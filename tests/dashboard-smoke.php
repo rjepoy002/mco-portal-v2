@@ -59,7 +59,32 @@ if (!preg_match('/^[a-f0-9]{64}$/', $token) || dashboardResolveAccountSelectionT
 }
 
 $dashboardSource = file_get_contents(__DIR__ . '/../dashboard.php');
-if (!str_contains($dashboardSource, 'switch-account-modal') || str_contains($dashboardSource, 'account-selector')) {
+if (
+    !str_contains($dashboardSource, 'switch-account-modal')
+    || str_contains($dashboardSource, 'account-selector')
+    || str_contains($dashboardSource, 'name="account_number"')
+    || !str_contains($dashboardSource, 'name="account_token"')
+) {
     throw new RuntimeException('Modal selector or legacy account dropdown markup is incorrect.');
+}
+if (
+    !str_contains($dashboardSource, "value=\"save_label\" data-friendly-label-action")
+    || !str_contains($dashboardSource, "action?.value === 'remove_label'")
+    || !str_contains($dashboardSource, "action.value = 'remove_label'")
+    || str_contains($dashboardSource, "name=\"action\" value=\"rename\"")
+) {
+    throw new RuntimeException('Friendly Label save/remove action split is incomplete.');
+}
+if (dashboardFormatConsumerName('Padrones, Rosalino') !== 'PADRONES, ROSALINO') {
+    throw new RuntimeException('Consumer name display formatting is incorrect.');
+}
+if (dashboardFormatServiceAddress('VILLA PRIN., STA. MONICA') !== 'Villa Prin., Sta. Monica') {
+    throw new RuntimeException('Service address display formatting is incorrect.');
+}
+if (dashboardFormatAccountStatus('active') !== 'ACTIVE') {
+    throw new RuntimeException('Account status display formatting is incorrect.');
+}
+if (dashboardDisplayAccountName(['account_nickname' => 'Main House', 'Name' => 'PADRONES']) !== 'Main House') {
+    throw new RuntimeException('Friendly label capitalization was altered.');
 }
 echo "Dashboard smoke check passed.\n";
